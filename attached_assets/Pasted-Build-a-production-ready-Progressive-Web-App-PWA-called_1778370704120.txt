@@ -1,0 +1,261 @@
+Build a production-ready Progressive Web App (PWA) called "FitConnect" - a fitness coaching app with a proactive AI coach, comprehensive tracking, and AI-generated walking routes.
+
+## TECH STACK (mandatory)
+- React 18 + Vite + Tailwind CSS
+- Supabase (auth, database, storage)
+- Anthropic Claude API (claude-sonnet-4-5-20250929 model) for AI coach
+- OpenRouteService API for walking routes
+- OneSignal for web push notifications
+- React Router for navigation
+- Make it a fully functional PWA (manifest.json + service worker for offline + installable on mobile)
+
+## REQUIRED SECRETS (ask user to add these in Replit Secrets, do NOT hardcode)
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_ANON_KEY
+- ANTHROPIC_API_KEY
+- VITE_OPENROUTESERVICE_API_KEY
+- VITE_ONESIGNAL_APP_ID
+- ONESIGNAL_REST_API_KEY
+
+## DESIGN SYSTEM
+Colors:
+- Background: #FAFAF7 (warm off-white)
+- Cards: #FFFFFF with subtle shadow
+- Primary text: #0F1419
+- Secondary text: #5A6472
+- Energy green (CTAs, success): #00C853
+- Power orange (streaks, alerts): #FF6B35
+- Focus purple (AI features, premium): #6C5CE7
+- Calm cyan (community): #00B8D4
+
+Typography: Inter font family, large headings (32-40px), 16px body
+UI Style: 16-24px rounded corners on cards, 12px on buttons, soft shadows, 48px+ tap targets, smooth transitions
+
+## INTERNATIONALIZATION (i18n)
+- Support French (FR) and English (EN)
+- User picks language during onboarding
+- Use react-i18next library
+- Store user's language preference in profile
+
+## DATABASE SCHEMA (Supabase)
+Create the following tables with proper RLS (Row Level Security) policies:
+
+### profiles
+- id (uuid, FK to auth.users)
+- email (text)
+- full_name (text)
+- language (text, 'fr' or 'en', default 'fr')
+- weight_kg (numeric)
+- height_cm (numeric)
+- age (integer)
+- gender (text)
+- goal (text: 'lose_weight', 'gain_muscle', 'maintain', 'health')
+- level (text: 'beginner', 'intermediate', 'advanced')
+- diet_preferences (jsonb: {halal: bool, vegan: bool, vegetarian: bool, keto: bool, allergies: array})
+- daily_calorie_target (integer)
+- daily_protein_target (integer)
+- checkin_times (jsonb: {morning: '08:00', lunch: '13:00', evening: '18:00', night: '21:00'})
+- streak_count (integer, default 0)
+- last_checkin_date (date)
+- created_at (timestamp)
+
+### coach_messages
+- id (uuid)
+- user_id (uuid, FK)
+- role (text: 'user' or 'assistant')
+- content (text)
+- type (text: 'chat', 'morning_checkin', 'lunch_checkin', 'evening_checkin', 'night_checkin', 'proactive_suggestion')
+- read (boolean, default false)
+- created_at (timestamp)
+
+### daily_logs
+- id (uuid)
+- user_id (uuid, FK)
+- date (date)
+- weight_kg (numeric)
+- meals (jsonb: array of {name, calories, protein, carbs, fat, meal_type})
+- workouts (jsonb: array of {name, duration_min, calories_burned, type})
+- water_liters (numeric)
+- sleep_hours (numeric)
+- mood (text)
+- notes (text)
+- created_at (timestamp)
+
+### progress_photos
+- id (uuid)
+- user_id (uuid, FK)
+- photo_url (text, Supabase Storage URL)
+- weight_kg (numeric)
+- date (date)
+- notes (text)
+
+### walking_routes
+- id (uuid)
+- user_id (uuid, FK)
+- start_location (jsonb: {lat, lng, address})
+- target_type (text: 'calories', 'minutes', 'distance')
+- target_value (numeric)
+- generated_route (jsonb: GeoJSON LineString from OpenRouteService)
+- distance_km (numeric)
+- duration_min (numeric)
+- estimated_calories (numeric)
+- completed (boolean, default false)
+- actual_calories (numeric)
+- created_at (timestamp)
+
+## ONBOARDING (4 SCREENS)
+After signup, before reaching the app, the user goes through:
+
+Screen 1 - Welcome
+- App logo + tagline ("Your AI coach, available 24/7")
+- "Get Started" button
+- Language toggle (FR/EN) at top
+
+Screen 2 - Your Goal
+- Question: "What's your main goal?"
+- 4 options with icons: Lose Weight / Build Muscle / Maintain Fitness / Improve Health
+
+Screen 3 - About You
+- Weight (kg)
+- Height (cm)
+- Age
+- Gender
+- Fitness level (Beginner / Intermediate / Advanced)
+
+Screen 4 - Preferences
+- Diet: Standard / Halal / Vegan / Vegetarian / Keto (multi-select)
+- Allergies (free text or multi-select)
+- Check-in times (with defaults: 08:00, 13:00, 18:00, 21:00 - editable)
+- Notification permission request (browser native + OneSignal subscription)
+
+After onboarding, calculate initial daily calorie/protein targets using Mifflin-St Jeor formula based on profile, save everything to Supabase, redirect to Home.
+
+## APP STRUCTURE - 4 TABS BOTTOM NAVIGATION
+
+### Tab 1 - HOME 🏠
+Personalized dashboard:
+- Greeting with name + current time of day ("Good morning Iyad")
+- Streak counter card (orange flame icon + days, "Don't break the chain!")
+- Today's coach check-in card (latest unread proactive message from AI)
+- Quick stats: today's calories vs target, protein, workouts logged
+- "Quick Actions": [Log Meal] [Log Workout] [Log Weight] [Generate Walk]
+- Active goals progress bars
+
+### Tab 2 - COACH 🤖 (the centerpiece feature)
+Chat interface with the AI coach:
+- Header: coach avatar + name + "online" indicator
+- Message thread (user messages on right blue bubbles, AI messages on left grey bubbles)
+- Proactive check-in messages appear automatically when scheduled times hit
+- Bottom: text input + send button
+- Side menu: "Settings" (edit check-in times), "History", "Goals"
+
+The AI coach uses Claude API with system prompt:
+"You are a personal fitness and nutrition coach for [user_name]. Their goal is [goal]. Their current weight is [weight]kg, target is [target]kg, on a daily calorie target of [calories] kcal and [protein]g protein. They follow a [diet] diet with allergies: [allergies]. Be warm, motivating, direct, and use 'tu' if French. Use their full conversation history to remember context. When they share what they ate, ask follow-up questions to help log macros. When they share a workout, congratulate and adapt advice. Be proactive: ask check-in questions, suggest walks if they have a calorie deficit to fill, remind about hydration. Keep responses short (2-4 sentences) like a real coach texting."
+
+The check-in system:
+- A serverless function (or scheduled worker) runs every minute
+- For each user, checks if it's their check-in time AND no check-in done today for that slot
+- Generates a contextual message via Claude API
+- Saves to coach_messages table
+- Sends OneSignal push notification + email (if push fails)
+
+Check-in templates (Claude generates variations):
+- 8AM (morning): "How did you sleep? What's the plan today?"
+- 1PM (lunch): "What did you have for lunch? How are you feeling?"
+- 6PM (evening): "Workout planned today? Need a quick walk to hit your goal?"
+- 9PM (night): "Quick wrap-up: how did the day go? Did you hit your protein target?"
+
+After 2 days of inactivity: "Hey, you ok? Haven't heard from you, here if you need anything."
+
+When user has calorie deficit > 200 in evening check-in, AI proactively suggests:
+"You still have 300 kcal to burn today. A 35-min walk would do it. Want me to generate a route?"
+[button: Generate Walk] -> opens Walk tab pre-filled with kcal target
+
+### Tab 3 - TRACK 📊
+Tracking section with sub-tabs:
+
+3a - Today
+- Add meal: form with name, calories, protein, carbs, fat (or AI-assisted: "describe your meal" -> Claude estimates macros)
+- Add workout: name, duration, type, calories burned
+- Add weight: simple input
+- Add water (quick +250ml buttons)
+- Visual: macro rings showing progress vs target
+
+3b - History
+- Calendar view showing logged days
+- Tap day to see details
+- Weekly/monthly graph: weight evolution, calorie average, workout count
+
+3c - Photos
+- Upload progress photo (saves to Supabase Storage)
+- Timeline view chronological
+- Compare mode: select 2 photos side by side
+
+### Tab 4 - WALK 🗺️
+The kcal-based route generator:
+
+Form:
+- Starting point (text input + "Use my location" button using Geolocation API)
+- Mode selector: [Loop] (only mode in MVP, mention "Point A to Point B coming soon")
+- Target type: [Calories] [Minutes] [Distance]
+- Target value: number input (e.g., 300 kcal, 45 min, 5 km)
+- Walking pace: Slow (4 km/h) / Normal (5 km/h) / Fast (6 km/h)
+
+When user submits:
+1. Convert target to distance:
+   - If calories: distance_km = (calories / (MET * weight)) * speed_kmh, where MET depends on pace
+   - If minutes: distance_km = (minutes / 60) * speed_kmh
+   - If distance: use directly
+2. Call OpenRouteService /v2/directions/foot-walking with options.round_trip parameter:
+   - length: target distance in meters
+   - points: 3 (number of waypoints)
+   - seed: random
+3. Generate 3 different route proposals (call API 3 times with different seeds)
+4. Display each as a card with: small map preview (Leaflet), distance, duration, estimated calories, "Start" button
+5. When user taps "Start": full screen map with route + start tracking
+6. After completion: save to walking_routes table, send congrats message via coach to chat
+
+Calorie calculation formula:
+calories = MET * weight_kg * (duration_minutes / 60)
+MET values: slow=3, normal=3.5, fast=4.5
+
+## PWA REQUIREMENTS
+- manifest.json with name, short_name, icons (192x192, 512x512), theme_color #00C853, background_color #FAFAF7
+- Service worker for offline support (cache assets, show offline page)
+- "Install App" prompt for users on Android Chrome
+- iOS install instructions for Safari users
+
+## ONESIGNAL INTEGRATION
+- Initialize OneSignal SDK on app load
+- Subscribe user during onboarding (after permission granted)
+- Save OneSignal player_id in profiles table
+- When AI sends proactive check-in: trigger OneSignal push via REST API + send email backup via Supabase
+
+## AUTHENTICATION
+- Supabase Auth with email + password
+- Add Google OAuth as alternative
+- "Forgot password" flow
+- Email verification required
+- Logout option in profile
+
+## RESPONSIVE & MOBILE-FIRST
+- Designed primarily for mobile (375px-428px width)
+- Works on tablet and desktop too
+- Bottom navigation always visible on mobile, sidebar on desktop
+- All interactions optimized for touch
+
+## IMPORTANT NOTES
+- Use placeholder images from picsum.photos where needed
+- Use lucide-react for icons
+- Add loading states everywhere (skeleton loaders)
+- Add error handling with friendly messages
+- Add empty states with illustrations and CTAs
+- Add disclaimers: "AI suggestions are not medical advice" on coach + walk pages
+- Make it FAST: lazy load tabs, optimize images
+- All text must work in both FR and EN
+- Make the AI coach feel ALIVE: typing indicators, varied response styles, natural conversation
+- Test the full flow: signup -> onboarding -> first AI check-in -> log meal -> generate walk
+
+Build a clean, well-organized codebase with components folder, hooks folder, services folder (api calls), and store folder (state management with Zustand).
+
+This is a real production app, not a prototype. Make it polished, performant, and delightful.
