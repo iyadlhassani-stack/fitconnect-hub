@@ -1,22 +1,29 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: FitConnect API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: ai
+    description: AI coach operations
+  - name: logs
+    description: Daily tracking logs
+  - name: routes
+    description: Walking routes
+  - name: notifications
+    description: Push notification operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,252 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /ai/chat:
+    post:
+      operationId: sendChatMessage
+      tags: [ai]
+      summary: Send a message to the AI coach and get a response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageInput"
+      responses:
+        "200":
+          description: AI response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+
+  /ai/estimate-macros:
+    post:
+      operationId: estimateMacros
+      tags: [ai]
+      summary: Ask Claude to estimate macros from a meal description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MacroEstimateInput"
+      responses:
+        "200":
+          description: Estimated macros
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MacroEstimate"
+
+  /ai/checkin:
+    post:
+      operationId: generateCheckin
+      tags: [ai]
+      summary: Generate a proactive check-in message for a specific time slot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckinInput"
+      responses:
+        "200":
+          description: Check-in message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+
+  /logs/today:
+    get:
+      operationId: getTodayLog
+      tags: [logs]
+      summary: Get today's daily log for the authenticated user
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Today's log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+
+  /logs:
+    post:
+      operationId: upsertDailyLog
+      tags: [logs]
+      summary: Create or update a daily log entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DailyLogInput"
+      responses:
+        "200":
+          description: Upserted log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyLog"
+
+  /logs/history:
+    get:
+      operationId: getLogsHistory
+      tags: [logs]
+      summary: Get log history for a user
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Log history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DailyLog"
+
+  /logs/stats:
+    get:
+      operationId: getUserStats
+      tags: [logs]
+      summary: Get aggregated stats for dashboard display
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User stats summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStats"
+
+  /routes/generate:
+    post:
+      operationId: generateWalkingRoutes
+      tags: [routes]
+      summary: Generate walking route proposals via OpenRouteService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouteGenerateInput"
+      responses:
+        "200":
+          description: Generated route proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RouteProposal"
+
+  /routes:
+    post:
+      operationId: saveWalkingRoute
+      tags: [routes]
+      summary: Save a completed walking route
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalkingRouteInput"
+      responses:
+        "201":
+          description: Saved route
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalkingRoute"
+
+  /routes/history:
+    get:
+      operationId: getRouteHistory
+      tags: [routes]
+      summary: Get walking route history for a user
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Route history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WalkingRoute"
+
+  /notifications/subscribe:
+    post:
+      operationId: subscribeNotifications
+      tags: [notifications]
+      summary: Register OneSignal player ID for push notifications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationSubscribeInput"
+      responses:
+        "200":
+          description: Subscribed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /notifications/send:
+    post:
+      operationId: sendPushNotification
+      tags: [notifications]
+      summary: Send a push notification to a user via OneSignal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendNotificationInput"
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +287,339 @@ components:
       required:
         - status
 
+    ChatMessageInput:
+      type: object
+      required: [messages, userProfile]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        userProfile:
+          $ref: "#/components/schemas/UserProfileContext"
+
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+
+    UserProfileContext:
+      type: object
+      required: [name, goal, language]
+      properties:
+        name:
+          type: string
+        goal:
+          type: string
+        weight_kg:
+          type: ["number", "null"]
+        daily_calorie_target:
+          type: ["integer", "null"]
+        daily_protein_target:
+          type: ["integer", "null"]
+        diet:
+          type: ["string", "null"]
+        language:
+          type: string
+          enum: [fr, en]
+
+    ChatResponse:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+
+    MacroEstimateInput:
+      type: object
+      required: [description, language]
+      properties:
+        description:
+          type: string
+        language:
+          type: string
+          enum: [fr, en]
+
+    MacroEstimate:
+      type: object
+      required: [name, calories, protein, carbs, fat]
+      properties:
+        name:
+          type: string
+        calories:
+          type: integer
+        protein:
+          type: number
+        carbs:
+          type: number
+        fat:
+          type: number
+        confidence:
+          type: string
+          enum: [high, medium, low]
+
+    CheckinInput:
+      type: object
+      required: [slot, userProfile]
+      properties:
+        slot:
+          type: string
+          enum: [morning, lunch, evening, night]
+        userProfile:
+          $ref: "#/components/schemas/UserProfileContext"
+        todayStats:
+          type: object
+          properties:
+            calories_consumed:
+              type: ["integer", "null"]
+            calories_target:
+              type: ["integer", "null"]
+            workouts_logged:
+              type: ["integer", "null"]
+
+    DailyLog:
+      type: object
+      required: [id, user_id, date]
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        date:
+          type: string
+        weight_kg:
+          type: ["number", "null"]
+        meals:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealEntry"
+        workouts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutEntry"
+        water_liters:
+          type: ["number", "null"]
+        sleep_hours:
+          type: ["number", "null"]
+        mood:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        created_at:
+          type: string
+
+    DailyLogInput:
+      type: object
+      required: [user_id, date]
+      properties:
+        user_id:
+          type: string
+        date:
+          type: string
+        weight_kg:
+          type: ["number", "null"]
+        meals:
+          type: array
+          items:
+            $ref: "#/components/schemas/MealEntry"
+        workouts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutEntry"
+        water_liters:
+          type: ["number", "null"]
+        sleep_hours:
+          type: ["number", "null"]
+        mood:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    MealEntry:
+      type: object
+      required: [name, calories]
+      properties:
+        name:
+          type: string
+        calories:
+          type: integer
+        protein:
+          type: ["number", "null"]
+        carbs:
+          type: ["number", "null"]
+        fat:
+          type: ["number", "null"]
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+
+    WorkoutEntry:
+      type: object
+      required: [name, duration_min]
+      properties:
+        name:
+          type: string
+        duration_min:
+          type: integer
+        calories_burned:
+          type: ["integer", "null"]
+        type:
+          type: string
+
+    UserStats:
+      type: object
+      required: [streak_count, total_logs, avg_daily_calories, avg_daily_protein, total_workouts]
+      properties:
+        streak_count:
+          type: integer
+        total_logs:
+          type: integer
+        avg_daily_calories:
+          type: number
+        avg_daily_protein:
+          type: number
+        total_workouts:
+          type: integer
+        this_week_calories:
+          type: number
+        this_week_workouts:
+          type: integer
+        weight_trend:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              weight_kg:
+                type: number
+
+    RouteGenerateInput:
+      type: object
+      required: [lat, lng, targetType, targetValue, pace, weightKg]
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        address:
+          type: ["string", "null"]
+        targetType:
+          type: string
+          enum: [calories, minutes, distance]
+        targetValue:
+          type: number
+        pace:
+          type: string
+          enum: [slow, normal, fast]
+        weightKg:
+          type: number
+
+    RouteProposal:
+      type: object
+      required: [distance_km, duration_min, estimated_calories, geojson]
+      properties:
+        distance_km:
+          type: number
+        duration_min:
+          type: number
+        estimated_calories:
+          type: number
+        geojson:
+          type: object
+          description: GeoJSON LineString
+
+    WalkingRouteInput:
+      type: object
+      required: [user_id, start_location, target_type, target_value, distance_km, duration_min, estimated_calories]
+      properties:
+        user_id:
+          type: string
+        start_location:
+          type: object
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+            address:
+              type: ["string", "null"]
+        target_type:
+          type: string
+        target_value:
+          type: number
+        generated_route:
+          type: object
+        distance_km:
+          type: number
+        duration_min:
+          type: number
+        estimated_calories:
+          type: number
+        completed:
+          type: boolean
+        actual_calories:
+          type: ["number", "null"]
+
+    WalkingRoute:
+      type: object
+      required: [id, user_id, distance_km, duration_min, estimated_calories, completed, created_at]
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        start_location:
+          type: object
+        target_type:
+          type: string
+        target_value:
+          type: number
+        generated_route:
+          type: object
+        distance_km:
+          type: number
+        duration_min:
+          type: number
+        estimated_calories:
+          type: number
+        completed:
+          type: boolean
+        actual_calories:
+          type: ["number", "null"]
+        created_at:
+          type: string
+
+    NotificationSubscribeInput:
+      type: object
+      required: [userId, playerId]
+      properties:
+        userId:
+          type: string
+        playerId:
+          type: string
+
+    SendNotificationInput:
+      type: object
+      required: [playerId, title, message]
+      properties:
+        playerId:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: ["string", "null"]

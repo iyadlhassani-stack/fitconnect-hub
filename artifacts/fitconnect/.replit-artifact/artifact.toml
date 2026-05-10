@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "FitConnect"
+version = "1.0.0"
+id = "artifacts/fitconnect"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23976
+
+[services.development]
+run = "pnpm --filter @workspace/fitconnect run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/fitconnect", "run", "build" ]
+publicDir = "artifacts/fitconnect/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23976"
+BASE_PATH = "/"
