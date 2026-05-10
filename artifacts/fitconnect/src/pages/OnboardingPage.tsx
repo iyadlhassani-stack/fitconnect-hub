@@ -70,29 +70,67 @@ export default function OnboardingPage() {
     return { cal, protein };
   };
 
+  const extractErrorMessage = (err: unknown): string => {
+    if (!err) return "Unknown error";
+    if (err instanceof Error) return err.message;
+    if (typeof err === "object") {
+      const e = err as Record<string, unknown>;
+      if (typeof e.message === "string" && e.message) return e.message;
+      if (typeof e.details === "string" && e.details) return e.details;
+      if (typeof e.hint === "string" && e.hint) return e.hint;
+      if (typeof e.error_description === "string") return e.error_description;
+      try { return JSON.stringify(err); } catch { return "Unknown error"; }
+    }
+    return String(err);
+  };
+
   const handleFinish = async () => {
     if (!user) return;
     setLoading(true);
     const { cal, protein } = calcCalories();
     try {
-      const { data, error } = await supabase.from("profiles").upsert({
+      const payload = {
         id: user.id,
-        email: user.email,
+        email: user.email ?? null,
+        full_name: user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? null,
         language: lang,
-        goal,
+        goal: goal ?? "health",
         weight_kg: parseFloat(weight) || null,
         height_cm: parseFloat(height) || null,
         age: parseInt(age) || null,
-        gender,
-        level,
+        gender: gender ?? null,
+        level: level ?? "beginner",
         diet_preferences: { diets, allergies },
         daily_calorie_target: cal,
         daily_protein_target: protein,
         streak_count: 0,
         checkin_times: { morning: "08:00", lunch: "13:00", evening: "18:00", night: "21:00" },
-      }).select().single();
+        last_checkin_date: null,
+      };
 
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "id" })
+        .select()
+        .single();
+
+      if (error) {
+        const msg = extractErrorMessage(error);
+        if (msg.includes("relation") && msg.includes("does not exist")) {
+          throw new Error(
+            "The 'profiles' table doesn't exist in Supabase yet. " +
+            "Please run the setup SQL from the project README in your Supabase SQL editor."
+          );
+        }
+        if (msg.includes("row-level security") || msg.includes("policy")) {
+          throw new Error(
+            "Supabase Row Level Security is blocking the insert. " +
+            "Add an RLS policy: allow users to manage their own profile (auth.uid() = id)."
+          );
+        }
+        throw new Error(msg);
+      }
+
       setProfile(data);
 
       if ("Notification" in window && Notification.permission === "default") {
@@ -101,7 +139,7 @@ export default function OnboardingPage() {
 
       setLocation("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Error creating profile";
+      const message = extractErrorMessage(err);
       toast({ title: t("common.error"), description: message, variant: "destructive" });
     } finally {
       setLoading(false);
