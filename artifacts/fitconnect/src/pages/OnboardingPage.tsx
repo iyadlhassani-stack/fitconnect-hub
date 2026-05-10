@@ -91,8 +91,6 @@ export default function OnboardingPage() {
     try {
       const payload = {
         id: user.id,
-        email: user.email ?? null,
-        full_name: user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? null,
         language: lang,
         goal: goal ?? "health",
         weight_kg: parseFloat(weight) || null,
