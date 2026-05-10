@@ -33,6 +33,8 @@ import type {
   RouteGenerateInput,
   RouteProposal,
   SendNotificationInput,
+  StreakCheckInput,
+  StreakCheckResult,
   SuccessResponse,
   UserStats,
   WalkingRoute,
@@ -1186,4 +1188,90 @@ export const useSendPushNotification = <
   TContext
 > => {
   return useMutation(getSendPushNotificationMutationOptions(options));
+};
+
+/**
+ * @summary Check if user has logged today and send a streak-protection reminder if not
+ */
+export const getStreakCheckUrl = () => {
+  return `/api/notifications/streak-check`;
+};
+
+export const streakCheck = async (
+  streakCheckInput: StreakCheckInput,
+  options?: RequestInit,
+): Promise<StreakCheckResult> => {
+  return customFetch<StreakCheckResult>(getStreakCheckUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(streakCheckInput),
+  });
+};
+
+export const getStreakCheckMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof streakCheck>>,
+    TError,
+    { data: BodyType<StreakCheckInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof streakCheck>>,
+  TError,
+  { data: BodyType<StreakCheckInput> },
+  TContext
+> => {
+  const mutationKey = ["streakCheck"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof streakCheck>>,
+    { data: BodyType<StreakCheckInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return streakCheck(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StreakCheckMutationResult = NonNullable<
+  Awaited<ReturnType<typeof streakCheck>>
+>;
+export type StreakCheckMutationBody = BodyType<StreakCheckInput>;
+export type StreakCheckMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Check if user has logged today and send a streak-protection reminder if not
+ */
+export const useStreakCheck = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof streakCheck>>,
+    TError,
+    { data: BodyType<StreakCheckInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof streakCheck>>,
+  TError,
+  { data: BodyType<StreakCheckInput> },
+  TContext
+> => {
+  return useMutation(getStreakCheckMutationOptions(options));
 };

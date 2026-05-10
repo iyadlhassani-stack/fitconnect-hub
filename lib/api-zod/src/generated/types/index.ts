@@ -33,6 +33,8 @@ export * from "./routeGenerateInputTargetType";
 export * from "./routeProposal";
 export * from "./routeProposalGeojson";
 export * from "./sendNotificationInput";
+export * from "./streakCheckInput";
+export * from "./streakCheckResult";
 export * from "./successResponse";
 export * from "./userProfileContext";
 export * from "./userProfileContextLanguage";

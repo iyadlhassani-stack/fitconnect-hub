@@ -277,6 +277,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
 
+  /notifications/streak-check:
+    post:
+      operationId: streakCheck
+      tags: [notifications]
+      summary: Check if user has logged today and send a streak-protection reminder if not
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreakCheckInput"
+      responses:
+        "200":
+          description: Check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreakCheckResult"
+
 components:
   schemas:
     HealthStatus:
@@ -614,6 +633,32 @@ components:
           type: string
         message:
           type: string
+
+    StreakCheckInput:
+      type: object
+      required: [userId, playerIds, language]
+      properties:
+        userId:
+          type: string
+        playerIds:
+          type: array
+          items:
+            type: string
+        language:
+          type: string
+        currentHour:
+          type: number
+
+    StreakCheckResult:
+      type: object
+      required: [hasLoggedToday, notificationSent]
+      properties:
+        hasLoggedToday:
+          type: boolean
+        notificationSent:
+          type: boolean
+        message:
+          type: ["string", "null"]
 
     SuccessResponse:
       type: object

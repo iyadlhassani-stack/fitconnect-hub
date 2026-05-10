@@ -287,6 +287,20 @@ export interface SendNotificationInput {
   message: string;
 }
 
+export interface StreakCheckInput {
+  userId: string;
+  playerIds: string[];
+  language: string;
+  currentHour?: number;
+}
+
+export interface StreakCheckResult {
+  hasLoggedToday: boolean;
+  notificationSent: boolean;
+  /** @nullable */
+  message?: string | null;
+}
+
 export interface SuccessResponse {
   success: boolean;
   /** @nullable */

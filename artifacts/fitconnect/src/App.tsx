@@ -11,6 +11,7 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { useAppStore } from "@/store/useAppStore";
+import { useNotifications } from "@/hooks/useNotifications";
 
 import AuthPage from "@/pages/AuthPage";
 import OnboardingPage from "@/pages/OnboardingPage";
@@ -28,6 +29,7 @@ function Router() {
   const { profile, loading: profileLoading } = useProfile();
   const user = useAppStore((s) => s.user);
   const [location, setLocation] = useLocation();
+  useNotifications();
 
   useEffect(() => {
     if (authLoading || profileLoading) return;

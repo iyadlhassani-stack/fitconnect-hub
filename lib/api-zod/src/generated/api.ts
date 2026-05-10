@@ -364,3 +364,19 @@ export const SendPushNotificationResponse = zod.object({
   success: zod.boolean(),
   message: zod.string().nullish(),
 });
+
+/**
+ * @summary Check if user has logged today and send a streak-protection reminder if not
+ */
+export const StreakCheckBody = zod.object({
+  userId: zod.string(),
+  playerIds: zod.array(zod.string()),
+  language: zod.string(),
+  currentHour: zod.number().optional(),
+});
+
+export const StreakCheckResponse = zod.object({
+  hasLoggedToday: zod.boolean(),
+  notificationSent: zod.boolean(),
+  message: zod.string().nullish(),
+});
