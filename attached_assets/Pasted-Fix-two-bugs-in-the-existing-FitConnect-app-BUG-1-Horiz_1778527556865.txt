@@ -1,0 +1,81 @@
+Fix two bugs in the existing FitConnect app.
+
+## BUG 1 - Horizontal overflow on the right side
+
+Some panels and cards overflow horizontally, causing an unwanted horizontal scroll on both mobile and desktop. Fix this by:
+
+1. Add `overflow-x: hidden` to both `html` and `body` elements in the global CSS file
+2. Review all top-level page containers and ensure they use:
+   - `max-width: 100%`
+   - `box-sizing: border-box`
+   - No `width: 100vw` (use `width: 100%` instead)
+3. Check specifically these sections that are likely overflowing:
+   - The Track tab cards (meal log, workout log)
+   - The Walk tab form panel
+   - The Coach tab message bubbles (long messages may overflow)
+   - The onboarding screens
+4. For text/buttons that might overflow, add:
+   - `word-wrap: break-word`
+   - `overflow-wrap: anywhere` on long text
+5. Test on viewport widths: 375px (mobile), 768px (tablet), 1440px (desktop)
+6. Ensure no element creates horizontal scroll on any page
+
+## BUG 2 - Progress photo upload not working
+
+The "Choose Photo" button in the Progress Photos section doesn't trigger an upload when clicked. Fix the complete upload flow:
+
+### Step 1: Supabase Storage setup
+Create a Storage bucket named `progress-photos` with these settings:
+- Public: false
+- File size limit: 5 MB
+- Allowed MIME types: image/jpeg, image/png, image/webp
+
+Add these RLS policies on the bucket:
+- Authenticated users can INSERT into their own folder (folder = auth.uid())
+- Authenticated users can SELECT their own files
+- Authenticated users can DELETE their own files
+
+The folder structure should be: `progress-photos/{user_id}/{timestamp}-{filename}`
+
+### Step 2: Frontend fix
+In the Progress Photos component:
+1. Wire the "Choose Photo" button to a hidden file input: `<input type="file" accept="image/*" hidden ref={fileInputRef} />`
+2. When user selects a file:
+   - Show a loading spinner immediately
+   - Compress the image client-side using `browser-image-compression` library (install if needed)
+   - Compression options: maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true
+3. Upload to Supabase Storage using the supabase-js client:
+   const { data, error } = await supabase.storage.from('progress-photos').upload(`${userId}/${Date.now()}-${file.name}`, compressedFile)
+4. Get the signed URL (since bucket is private):
+   const { data: { signedUrl } } = await supabase.storage.from('progress-photos').createSignedUrl(path, 60 * 60 * 24 * 365)
+5. Save to `progress_photos` table:
+   - user_id (from auth)
+   - photo_url (signed URL)
+   - photo_path (storage path for later deletion)
+   - weight_kg (from a small form: optional input)
+   - date (today by default, editable)
+   - notes (optional textarea)
+6. After successful upload:
+   - Hide loading spinner
+   - Show success toast "Photo uploaded successfully"
+   - Refresh the photo timeline to display the new photo
+7. Error handling:
+   - If upload fails, show error toast with reason
+   - Common errors: file too large, wrong format, network issue
+   - Allow user to retry
+
+### Step 3: Photo display fix
+Ensure the photo timeline:
+- Loads all photos for the current user, ordered by date DESC
+- Displays them as a grid (2 columns mobile, 3-4 desktop)
+- Each photo shows: image, date, weight if logged, notes
+- Tap on a photo opens it in a full-screen lightbox
+- Compare mode: select 2 photos, displays them side-by-side
+
+## Testing
+After fixes, verify:
+1. No horizontal scroll on any page
+2. Can upload a photo from the Progress section
+3. Photo appears immediately in the timeline
+4. Photo persists after page refresh
+5. Other users cannot see your photos (RLS works)

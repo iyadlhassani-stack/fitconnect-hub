@@ -1,0 +1,52 @@
+Fix two bugs in the existing FitConnect app.
+
+## BUG 1 - Horizontal overflow on the right side
+
+Some panels and cards overflow horizontally, causing an unwanted 
+horizontal scroll on both mobile and desktop. Fix this by:
+
+1. Add `overflow-x: hidden` to both `html` and `body` elements 
+   in the global CSS file
+2. Review all top-level page containers and ensure they use:
+   - `max-width: 100%`
+   - `box-sizing: border-box`
+   - No `width: 100vw` (use `width: 100%` instead)
+3. Check specifically these sections that are likely overflowing:
+   - The Track tab cards (meal log, workout log)
+   - The Walk tab form panel
+   - The Coach tab message bubbles (long messages may overflow)
+   - The onboarding screens
+4. For text/buttons that might overflow, add:
+   - `word-wrap: break-word`
+   - `overflow-wrap: anywhere` on long text
+5. Test on viewport widths: 375px (mobile), 768px (tablet), 1440px (desktop)
+6. Ensure no element creates horizontal scroll on any page
+
+## BUG 2 - Progress photo upload not working
+
+The "Choose Photo" button in the Progress Photos section doesn't 
+trigger an upload when clicked. Fix the complete upload flow:
+
+### Step 1: Supabase Storage setup
+Create a Storage bucket named `progress-photos` with these settings:
+- Public: false
+- File size limit: 5 MB
+- Allowed MIME types: image/jpeg, image/png, image/webp
+
+Add these RLS policies on the bucket:
+- Authenticated users can INSERT into their own folder (folder = auth.uid())
+- Authenticated users can SELECT their own files
+- Authenticated users can DELETE their own files
+
+The folder structure should be: `progress-photos/{user_id}/{timestamp}-{filename}`
+
+### Step 2: Frontend fix
+In the Progress Photos component:
+1. Wire the "Choose Photo" button to a hidden file input:
+   `<input type="file" accept="image/*" hidden ref={fileInputRef} />`
+2. When user selects a file:
+   - Show a loading spinner immediately
+   - Compress the image client-side using `browser-image-compression` 
+     library (install if needed)
+   - Compression options: maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true
+3. Upload to Supabase Storage using the supabase-js client:

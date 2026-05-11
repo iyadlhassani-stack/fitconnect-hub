@@ -228,8 +228,8 @@ export default function CoachPage() {
                 <Bot className="w-4 h-4 text-white" />
               </div>
             )}
-            <div className={`px-4 py-3 rounded-2xl ${msg.role === "user" ? "bg-primary text-white rounded-br-sm" : "bg-card border border-border text-foreground rounded-bl-sm"}`}>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+            <div className={`px-4 py-3 rounded-2xl min-w-0 ${msg.role === "user" ? "bg-primary text-white rounded-br-sm" : "bg-card border border-border text-foreground rounded-bl-sm"}`}>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere">{msg.content}</p>
               <p className={`text-xs mt-1 ${msg.role === "user" ? "text-white/60" : "text-muted-foreground"}`}>
                 {format(new Date(msg.created_at), "HH:mm")}
               </p>
