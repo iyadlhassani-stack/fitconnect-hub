@@ -1,0 +1,184 @@
+Completely refactor the Walk tab in the FitConnect app. The current implementation has multiple bugs (generates routes without address, doesn't link to external maps, only supports single location). Replace it with this new design.
+
+## NEW FEATURE SPEC
+
+### 3 Walking Modes
+Users can choose between 3 modes via segmented control or radio buttons at the top of the Walk tab:
+
+1. **Loop** - Start and end at the same point, generate a circular route
+2. **Point A to Point B** - Direct walking route between two addresses
+3. **A to B + Burn X calories** (BETA badge) - Walking route from A to B with intelligent detour to reach a calorie target
+
+### Address Input - 3 methods available simultaneously
+For each address field, provide THREE input methods:
+
+1. **Text input with autocomplete** using Nominatim API (free OpenStreetMap geocoding):
+   - Endpoint: https://nominatim.openstreetmap.org/search?q=QUERY&format=json&addressdetails=1&limit=5
+   - Debounce 300ms while user types
+   - Show dropdown with top 5 results
+   - On select, fill the address and store lat/lng
+   - IMPORTANT: Send a User-Agent header (required by Nominatim): "FitConnect/1.0"
+
+2. **"Use my location" button** - Uses browser Geolocation API:
+   - On click, request user permission
+   - Get current lat/lng via navigator.geolocation.getCurrentPosition()
+   - Reverse geocode to get readable address via Nominatim:
+     https://nominatim.openstreetmap.org/reverse?lat=LAT&lon=LNG&format=json
+   - Fill the input with the resolved address
+
+3. **Interactive map** - Click on a Leaflet map to place a pin:
+   - Use react-leaflet library
+   - Centered initially on user's location or default to Paris
+   - User clicks anywhere to place/move a marker
+   - On click, reverse geocode and fill the address input
+   - Show a "Set on map" button next to the address input that opens a modal with the map
+
+Address validation: The "Generate route" button is DISABLED until valid addresses are entered for all required fields (1 for Loop mode, 2 for the A→B modes).
+
+### Form Fields - Same for all modes
+
+**Goal type** (radio buttons):
+- Calories to burn (input in kcal)
+- Walking time (input in minutes)
+- Distance (input in km)
+
+**Walking pace** (radio buttons):
+- Slow (4 km/h, MET 3.0)
+- Normal (5 km/h, MET 3.5)
+- Fast (6 km/h, MET 4.5)
+
+**Generate button** at the bottom: "Generate my route 🚶"
+
+### Distance Calculation Logic
+
+Convert goal to target distance in km:
+- If goal is calories: `target_km = (calories / (MET * user_weight_kg)) * speed_kmh`
+  Example: 300 kcal, 80kg, normal pace (MET 3.5, 5 km/h) = (300 / (3.5 * 80)) * 5 = ~5.4 km
+- If goal is minutes: `target_km = (minutes / 60) * speed_kmh`
+- If goal is km: use directly
+
+### Route Generation Logic
+
+**Mode 1 - Loop:**
+- Call OpenRouteService /v2/directions/foot-walking with `options.round_trip`:
+  - length: target_km * 1000 (in meters)
+  - points: 5 (waypoints for the loop)
+  - seed: Math.random() * 1000 (for variety)
+- Get back a GeoJSON LineString
+
+**Mode 2 - Point A to Point B (direct):**
+- Call OpenRouteService /v2/directions/foot-walking with [pointA, pointB] coordinates
+- Get back the direct walking route
+- Calculate actual distance, time, calories from response
+- NOTE: The user's distance/time/calories goal is INFORMATIONAL only in this mode - the actual route is the direct path. Show a notice: "This is the direct route. Actual distance/calories shown below."
+
+**Mode 3 - A to B with calorie target (BETA):**
+- First, calculate direct route A→B distance (d_direct)
+- Then calculate target distance d_target from the calorie goal
+- If d_target <= d_direct: just use the direct route (notify user "Direct route already exceeds your goal")
+- If d_target > d_direct: need to add a detour
+  - Calculate midpoint M between A and B
+  - Calculate perpendicular offset distance needed: detour_distance = (d_target - d_direct) / 2 (rough approximation)
+  - Generate waypoint C perpendicular to A→B at midpoint M, offset by detour_distance
+  - Try calling OpenRouteService with route [A, C, B]
+  - Check actual distance vs target
+  - If error > 15%, try a different waypoint (other side perpendicular, or slightly different offset)
+  - Maximum 3 retries, then return best attempt with a note: "Route is approximate ([actual_km] km, target was [target_km] km)"
+
+### Results Display
+
+After generation, show a single result card with:
+
+**Map preview** (Leaflet) showing the route polyline + start/end markers
+- Use the route's GeoJSON from OpenRouteService
+- Auto-center and auto-zoom to fit the entire route
+
+**Stats below the map:**
+- 📍 Distance: X.X km
+- ⏱️ Estimated duration: X min  
+- 🔥 Estimated calories: X kcal (calculated from MET formula)
+- 🏃 Pace: [Slow/Normal/Fast]
+
+**Action buttons:**
+
+1. **"Start Navigation"** (primary CTA, large button)
+   - On click, opens a bottom sheet with 3 options:
+     - Google Maps (icon)
+     - Apple Maps (icon)
+     - Waze (icon)
+   - Each button opens the respective app/website with the route pre-filled:
+     - Google Maps: `https://www.google.com/maps/dir/?api=1&origin=LAT,LNG&destination=LAT,LNG&travelmode=walking&waypoints=LAT,LNG|LAT,LNG`
+     - Apple Maps: `https://maps.apple.com/?saddr=LAT,LNG&daddr=LAT,LNG&dirflg=w`
+     - Waze: `https://waze.com/ul?ll=LAT,LNG&navigate=yes` (Waze doesn't support waypoints well, send to destination only)
+   - Use `target="_blank"` and `rel="noopener noreferrer"` for safety
+   - Auto-detect platform: on iOS Safari, prioritize Apple Maps button at top; on Android Chrome, prioritize Google Maps
+
+2. **"Regenerate"** (secondary button, with refresh icon)
+   - Regenerates a new route with the same parameters but different seed (for loops) or different waypoint (for mode 3)
+   - For mode 2 (direct), just keeps the same route (no variation possible)
+
+3. **"Save to History"** (small text button)
+   - Saves the route to the `walking_routes` table in Supabase
+   - Shows toast: "Saved to your walks"
+
+### Calorie Calculation
+
+Use the formula: `calories = MET * weight_kg * (duration_minutes / 60)`
+
+Where:
+- MET = 3.0 (slow), 3.5 (normal), 4.5 (fast)
+- weight_kg = user's weight from profile
+- duration_minutes = distance_km / speed_kmh * 60
+
+### Visual Design
+
+- Mode selector: segmented control or pill buttons at top
+- Mode 3 has a small "BETA" orange badge next to the label
+- Form sections clearly separated with spacing
+- Loading state during generation: animated walking icon + "Generating your perfect route..."
+- Generation can take up to 10s for mode 3, show progress hints: "Calculating distance... Finding detour... Optimizing route..."
+- Error states: friendly message if route generation fails ("Couldn't find a suitable route in this area. Try a different starting point or smaller distance.")
+
+### Integration with AI Coach
+
+After saving a route to history, also send a message to the AI coach in the background:
+- Insert a message into `coach_messages` with type 'proactive_suggestion':
+  "Nice walk planned! [distance] km for [calories] kcal. Let me know when you complete it, I'll log it in your daily total!"
+
+### Required API Keys (use existing Secrets)
+- VITE_OPENROUTESERVICE_API_KEY (already set)
+- Nominatim: no key needed (free, just respect their User-Agent policy)
+
+### Required Packages
+Install if not present:
+- react-leaflet (for interactive map)
+- leaflet (the underlying library)
+- @types/leaflet (TypeScript types if used)
+
+### Database
+Use existing `walking_routes` table. If schema is missing fields, add:
+- start_address (text)
+- end_address (text, nullable for loop mode)
+- mode (text: 'loop', 'direct', 'calorie_detour')
+- generated_route_geojson (jsonb)
+- estimated_calories (numeric)
+- pace (text)
+
+## TESTING REQUIREMENTS
+After implementation, verify:
+1. Loop mode: enter starting point, set 300 kcal target, generate → see a loop on map, stats correct
+2. A→B mode: enter both addresses, see direct route, stats correct
+3. A→B + kcal mode: enter both addresses + 400 kcal target, see route with detour
+4. Autocomplete works while typing an address
+5. "Use my location" button fetches and fills current address
+6. Map click places a pin and fills address
+7. "Start Navigation" opens correct maps app with route
+8. "Regenerate" produces a different loop on mode 1
+9. Save to History persists the route
+10. Coach receives a message after saving
+
+## DON'T CHANGE
+- Don't modify other tabs (Home, Coach, Track)
+- Don't remove the bottom navigation
+- Keep the existing design system colors (#00C853 primary, #FF6B35 orange for BETA)
+- Keep existing translations FR/EN, add new strings for Walk tab in both languages

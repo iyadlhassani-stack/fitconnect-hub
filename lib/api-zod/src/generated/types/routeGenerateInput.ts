@@ -5,16 +5,26 @@
  * FitConnect API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RouteGenerateInputMode } from "./routeGenerateInputMode";
 import type { RouteGenerateInputPace } from "./routeGenerateInputPace";
 import type { RouteGenerateInputTargetType } from "./routeGenerateInputTargetType";
 
 export interface RouteGenerateInput {
+  mode?: RouteGenerateInputMode;
   lat: number;
   lng: number;
   /** @nullable */
   address?: string | null;
+  /** @nullable */
+  endLat?: number | null;
+  /** @nullable */
+  endLng?: number | null;
+  /** @nullable */
+  endAddress?: string | null;
   targetType: RouteGenerateInputTargetType;
   targetValue: number;
   pace: RouteGenerateInputPace;
   weightKg: number;
+  /** @nullable */
+  seed?: number | null;
 }

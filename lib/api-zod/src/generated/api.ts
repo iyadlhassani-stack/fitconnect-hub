@@ -273,27 +273,47 @@ export const GetUserStatsResponse = zod.object({
 });
 
 /**
- * @summary Generate walking route proposals via OpenRouteService
+ * @summary Generate a walking route via OpenRouteService (loop, direct, or calorie detour)
  */
+export const generateWalkingRoutesBodyModeDefault = `loop`;
+
 export const GenerateWalkingRoutesBody = zod.object({
+  mode: zod
+    .enum(["loop", "direct", "calorie_detour"])
+    .default(generateWalkingRoutesBodyModeDefault),
   lat: zod.number(),
   lng: zod.number(),
   address: zod.string().nullish(),
+  endLat: zod.number().nullish(),
+  endLng: zod.number().nullish(),
+  endAddress: zod.string().nullish(),
   targetType: zod.enum(["calories", "minutes", "distance"]),
   targetValue: zod.number(),
   pace: zod.enum(["slow", "normal", "fast"]),
   weightKg: zod.number(),
+  seed: zod.number().nullish(),
 });
 
-export const GenerateWalkingRoutesResponseItem = zod.object({
+export const GenerateWalkingRoutesResponse = zod.object({
   distance_km: zod.number(),
   duration_min: zod.number(),
   estimated_calories: zod.number(),
   geojson: zod.object({}).passthrough().describe("GeoJSON LineString"),
+  note: zod.string().nullish(),
+  mode: zod.string().nullish(),
+  start_coords: zod
+    .object({
+      lat: zod.number().optional(),
+      lng: zod.number().optional(),
+    })
+    .optional(),
+  end_coords: zod
+    .object({
+      lat: zod.number().optional(),
+      lng: zod.number().optional(),
+    })
+    .optional(),
 });
-export const GenerateWalkingRoutesResponse = zod.array(
-  GenerateWalkingRoutesResponseItem,
-);
 
 /**
  * @summary Save a completed walking route

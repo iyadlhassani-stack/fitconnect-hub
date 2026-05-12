@@ -752,7 +752,7 @@ export function useGetUserStats<
 }
 
 /**
- * @summary Generate walking route proposals via OpenRouteService
+ * @summary Generate a walking route via OpenRouteService (loop, direct, or calorie detour)
  */
 export const getGenerateWalkingRoutesUrl = () => {
   return `/api/routes/generate`;
@@ -761,8 +761,8 @@ export const getGenerateWalkingRoutesUrl = () => {
 export const generateWalkingRoutes = async (
   routeGenerateInput: RouteGenerateInput,
   options?: RequestInit,
-): Promise<RouteProposal[]> => {
-  return customFetch<RouteProposal[]>(getGenerateWalkingRoutesUrl(), {
+): Promise<RouteProposal> => {
+  return customFetch<RouteProposal>(getGenerateWalkingRoutesUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -815,7 +815,7 @@ export type GenerateWalkingRoutesMutationBody = BodyType<RouteGenerateInput>;
 export type GenerateWalkingRoutesMutationError = ErrorType<unknown>;
 
 /**
- * @summary Generate walking route proposals via OpenRouteService
+ * @summary Generate a walking route via OpenRouteService (loop, direct, or calorie detour)
  */
 export const useGenerateWalkingRoutes = <
   TError = ErrorType<unknown>,

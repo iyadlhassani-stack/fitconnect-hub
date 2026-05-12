@@ -12,6 +12,83 @@ const router = Router();
 const MET: Record<string, number> = { slow: 3, normal: 3.5, fast: 4.5 };
 const SPEED: Record<string, number> = { slow: 4, normal: 5, fast: 6 };
 
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function perpendicularWaypoint(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+  offsetKm: number,
+  side: 1 | -1
+): [number, number] {
+  const dLat = lat2 - lat1;
+  const dLng = lng2 - lng1;
+  const perpLat = -dLng;
+  const perpLng = dLat;
+  const len = Math.sqrt(perpLat ** 2 + perpLng ** 2);
+  if (len === 0) return [(lat1 + lat2) / 2, (lng1 + lng2) / 2];
+  const normLat = perpLat / len;
+  const normLng = perpLng / len;
+  const offsetDeg = offsetKm / 111;
+  const midLat = (lat1 + lat2) / 2;
+  const midLng = (lng1 + lng2) / 2;
+  return [
+    midLat + side * normLat * offsetDeg,
+    midLng + side * normLng * offsetDeg,
+  ];
+}
+
+interface OrsResult {
+  distance: number;
+  duration: number;
+  coordinates: number[][];
+}
+
+async function callORS(
+  coords: [number, number][],
+  options: Record<string, unknown> | null,
+  orsKey: string
+): Promise<OrsResult | null> {
+  const body: Record<string, unknown> = { coordinates: coords };
+  if (options) body.options = options;
+
+  const response = await fetch(
+    "https://api.openrouteservice.org/v2/directions/foot-walking/geojson",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: orsKey },
+      body: JSON.stringify(body),
+    }
+  );
+
+  if (!response.ok) return null;
+
+  const data = (await response.json()) as {
+    features?: Array<{
+      geometry: { coordinates: number[][] };
+      properties: { summary: { distance: number; duration: number } };
+    }>;
+  };
+
+  if (!data.features?.[0]) return null;
+
+  const feature = data.features[0];
+  return {
+    distance: feature.properties.summary.distance,
+    duration: feature.properties.summary.duration,
+    coordinates: feature.geometry.coordinates,
+  };
+}
+
 router.post("/routes/generate", async (req, res): Promise<void> => {
   const parsed = GenerateWalkingRoutesBody.safeParse(req.body);
   if (!parsed.success) {
@@ -19,136 +96,177 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
     return;
   }
 
-  const { lat, lng, targetType, targetValue, pace, weightKg } = parsed.data;
+  const { mode = "loop", lat, lng, endLat, endLng, targetType, targetValue, pace, weightKg, seed } = parsed.data;
 
   const speedKmh = SPEED[pace] ?? 5;
   const met = MET[pace] ?? 3.5;
 
-  let distanceKm: number;
-  let durationMin: number;
-
+  let targetKm: number;
   if (targetType === "calories") {
-    // calories = MET * weight * (duration_h) => duration_h = calories / (MET * weight)
     const durationH = Number(targetValue) / (met * Number(weightKg));
-    durationMin = Math.round(durationH * 60);
-    distanceKm = durationH * speedKmh;
+    targetKm = durationH * speedKmh;
   } else if (targetType === "minutes") {
-    durationMin = Number(targetValue);
-    distanceKm = (durationMin / 60) * speedKmh;
+    targetKm = (Number(targetValue) / 60) * speedKmh;
   } else {
-    distanceKm = Number(targetValue);
-    durationMin = Math.round((distanceKm / speedKmh) * 60);
+    targetKm = Number(targetValue);
   }
-
-  const distanceM = Math.round(distanceKm * 1000);
-  const estimatedCalories = Math.round(met * Number(weightKg) * (durationMin / 60));
 
   const orsKey = process.env.VITE_OPENROUTESERVICE_API_KEY;
 
-  if (!orsKey) {
-    req.log.warn("No ORS API key, returning mock routes");
-    const mockRoutes = [1, 2, 3].map((seed) => ({
-      distance_km: parseFloat((distanceKm * (0.9 + seed * 0.05)).toFixed(2)),
-      duration_min: Math.round(durationMin * (0.9 + seed * 0.05)),
-      estimated_calories: Math.round(estimatedCalories * (0.9 + seed * 0.05)),
-      geojson: {
-        type: "LineString",
-        coordinates: [
-          [lng, lat],
-          [lng + 0.005 * seed, lat + 0.003],
-          [lng + 0.008, lat + 0.007 * seed],
-          [lng + 0.003, lat + 0.010],
-          [lng, lat],
-        ],
-      },
-    }));
-    res.json(mockRoutes);
-    return;
-  }
+  const buildResult = (
+    distanceM: number,
+    durationS: number,
+    coordinates: number[][],
+    note?: string
+  ) => {
+    const distanceKm = distanceM / 1000;
+    const durationMin = Math.round(durationS / 60);
+    const calories = Math.round(met * Number(weightKg) * (durationMin / 60));
+    return {
+      distance_km: parseFloat(distanceKm.toFixed(2)),
+      duration_min: durationMin,
+      estimated_calories: calories,
+      geojson: { type: "LineString", coordinates },
+      note: note ?? null,
+      mode,
+      start_coords: { lat, lng },
+      end_coords:
+        endLat != null && endLng != null ? { lat: endLat, lng: endLng } : { lat, lng },
+    };
+  };
+
+  const mockLoop = () => {
+    const mockCoords = [
+      [lng, lat],
+      [lng + 0.012, lat + 0.008],
+      [lng + 0.018, lat - 0.004],
+      [lng + 0.006, lat - 0.012],
+      [lng, lat],
+    ];
+    return buildResult(targetKm * 1000, (targetKm / speedKmh) * 3600, mockCoords);
+  };
 
   try {
-    const routes = await Promise.all(
-      [1, 2, 3].map(async (seed) => {
-        const body = {
-          coordinates: [[lng, lat]],
-          options: {
-            round_trip: {
-              length: distanceM,
-              points: 3,
-              seed,
-            },
-          },
-        };
+    if (mode === "loop") {
+      const usedSeed = seed ?? Math.floor(Math.random() * 1000);
 
-        const response = await fetch(
-          "https://api.openrouteservice.org/v2/directions/foot-walking/geojson",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: orsKey,
-            },
-            body: JSON.stringify(body),
-          }
-        );
+      if (!orsKey) {
+        res.json(mockLoop());
+        return;
+      }
 
-        if (!response.ok) {
-          const text = await response.text();
-          req.log.warn({ status: response.status, text }, "ORS API error");
-          return null;
-        }
+      const result = await callORS(
+        [[lng, lat]],
+        { round_trip: { length: Math.round(targetKm * 1000), points: 5, seed: usedSeed } },
+        orsKey
+      );
 
-        const data = (await response.json()) as {
-          features?: Array<{
-            geometry: { type: string; coordinates: number[][] };
-            properties: { summary: { distance: number; duration: number } };
-          }>;
-        };
+      if (!result) {
+        req.log.warn("ORS loop failed, using mock");
+        res.json(mockLoop());
+        return;
+      }
 
-        if (!data.features?.[0]) return null;
-
-        const feature = data.features[0];
-        const summary = feature.properties.summary;
-        const actualDistanceKm = summary.distance / 1000;
-        const actualDurationMin = Math.round(summary.duration / 60);
-        const actualCalories = Math.round(met * Number(weightKg) * (actualDurationMin / 60));
-
-        return {
-          distance_km: parseFloat(actualDistanceKm.toFixed(2)),
-          duration_min: actualDurationMin,
-          estimated_calories: actualCalories,
-          geojson: feature.geometry,
-        };
-      })
-    );
-
-    const validRoutes = routes.filter(Boolean);
-
-    if (validRoutes.length === 0) {
-      // Fallback to mock
-      const mockRoutes = [1, 2, 3].map((seed) => ({
-        distance_km: parseFloat((distanceKm * (0.9 + seed * 0.05)).toFixed(2)),
-        duration_min: Math.round(durationMin * (0.9 + seed * 0.05)),
-        estimated_calories: Math.round(estimatedCalories * (0.9 + seed * 0.05)),
-        geojson: {
-          type: "LineString",
-          coordinates: [
-            [lng, lat],
-            [lng + 0.005 * seed, lat + 0.003],
-            [lng + 0.008, lat + 0.007 * seed],
-            [lng + 0.003, lat + 0.010],
-            [lng, lat],
-          ],
-        },
-      }));
-      res.json(mockRoutes);
+      res.json(buildResult(result.distance, result.duration, result.coordinates));
       return;
     }
 
-    res.json(validRoutes);
+    if (mode === "direct") {
+      if (endLat == null || endLng == null) {
+        res.status(400).json({ error: "End coordinates required for direct mode" });
+        return;
+      }
+
+      if (!orsKey) {
+        const d = haversineKm(lat, lng, endLat, endLng);
+        res.json(buildResult(d * 1000, (d / speedKmh) * 3600, [[lng, lat], [endLng, endLat]], "Direct route shown."));
+        return;
+      }
+
+      const result = await callORS([[lng, lat], [endLng, endLat]], null, orsKey);
+
+      if (!result) {
+        req.log.warn("ORS direct failed");
+        const d = haversineKm(lat, lng, endLat, endLng);
+        res.json(buildResult(d * 1000, (d / speedKmh) * 3600, [[lng, lat], [endLng, endLat]], "This is the direct route between your points."));
+        return;
+      }
+
+      res.json(buildResult(result.distance, result.duration, result.coordinates, "This is the direct route between your points."));
+      return;
+    }
+
+    if (mode === "calorie_detour") {
+      if (endLat == null || endLng == null) {
+        res.status(400).json({ error: "End coordinates required for calorie_detour mode" });
+        return;
+      }
+
+      if (!orsKey) {
+        const mockCoords = [
+          [lng, lat],
+          [lng + 0.015, lat + 0.018],
+          [(lng + endLng) / 2, (lat + endLat) / 2],
+          [endLng, endLat],
+        ];
+        res.json(buildResult(targetKm * 1000, (targetKm / speedKmh) * 3600, mockCoords));
+        return;
+      }
+
+      const directResult = await callORS([[lng, lat], [endLng, endLat]], null, orsKey);
+      const directKm = directResult
+        ? directResult.distance / 1000
+        : haversineKm(lat, lng, endLat, endLng);
+
+      if (targetKm <= directKm) {
+        const coords = directResult?.coordinates ?? [[lng, lat], [endLng, endLat]];
+        const dur = directResult?.duration ?? (directKm / speedKmh) * 3600;
+        const dist = directResult?.distance ?? directKm * 1000;
+        res.json(
+          buildResult(dist, dur, coords, `Direct route already covers ${directKm.toFixed(1)} km (target: ${targetKm.toFixed(1)} km).`)
+        );
+        return;
+      }
+
+      const offsetKm = (targetKm - directKm) / 2;
+      let bestResult: OrsResult | null = null;
+      let bestNote: string | null = null;
+
+      for (const side of [1, -1] as const) {
+        for (const multiplier of [1, 1.4]) {
+          const [wLat, wLng] = perpendicularWaypoint(lat, lng, endLat, endLng, offsetKm * multiplier, side);
+          const result = await callORS([[lng, lat], [wLng, wLat], [endLng, endLat]], null, orsKey);
+          if (!result) continue;
+
+          const actualKm = result.distance / 1000;
+          const errorPct = Math.abs(actualKm - targetKm) / targetKm;
+
+          if (errorPct <= 0.18) {
+            res.json(buildResult(result.distance, result.duration, result.coordinates));
+            return;
+          }
+
+          if (!bestResult || Math.abs(actualKm - targetKm) < Math.abs((bestResult.distance / 1000) - targetKm)) {
+            bestResult = result;
+            bestNote = `Route is approximate (${actualKm.toFixed(1)} km, target was ${targetKm.toFixed(1)} km)`;
+          }
+        }
+      }
+
+      if (bestResult) {
+        res.json(buildResult(bestResult.distance, bestResult.duration, bestResult.coordinates, bestNote ?? undefined));
+      } else {
+        const coords = directResult?.coordinates ?? [[lng, lat], [endLng, endLat]];
+        const dur = directResult?.duration ?? (directKm / speedKmh) * 3600;
+        res.json(buildResult(directResult?.distance ?? directKm * 1000, dur, coords, "Could not find a detour — showing direct route."));
+      }
+      return;
+    }
+
+    res.status(400).json({ error: "Invalid mode" });
   } catch (err) {
-    req.log.error({ err }, "Failed to generate routes");
-    res.status(500).json({ error: "Failed to generate walking routes" });
+    req.log.error({ err }, "Failed to generate route");
+    res.status(500).json({ error: "Failed to generate walking route" });
   }
 });
 

@@ -191,6 +191,15 @@ export interface UserStats {
   weight_trend?: UserStatsWeightTrendItem[];
 }
 
+export type RouteGenerateInputMode =
+  (typeof RouteGenerateInputMode)[keyof typeof RouteGenerateInputMode];
+
+export const RouteGenerateInputMode = {
+  loop: "loop",
+  direct: "direct",
+  calorie_detour: "calorie_detour",
+} as const;
+
 export type RouteGenerateInputTargetType =
   (typeof RouteGenerateInputTargetType)[keyof typeof RouteGenerateInputTargetType];
 
@@ -210,14 +219,23 @@ export const RouteGenerateInputPace = {
 } as const;
 
 export interface RouteGenerateInput {
+  mode?: RouteGenerateInputMode;
   lat: number;
   lng: number;
   /** @nullable */
   address?: string | null;
+  /** @nullable */
+  endLat?: number | null;
+  /** @nullable */
+  endLng?: number | null;
+  /** @nullable */
+  endAddress?: string | null;
   targetType: RouteGenerateInputTargetType;
   targetValue: number;
   pace: RouteGenerateInputPace;
   weightKg: number;
+  /** @nullable */
+  seed?: number | null;
 }
 
 /**
@@ -225,12 +243,28 @@ export interface RouteGenerateInput {
  */
 export type RouteProposalGeojson = { [key: string]: unknown };
 
+export type RouteProposalStartCoords = {
+  lat?: number;
+  lng?: number;
+};
+
+export type RouteProposalEndCoords = {
+  lat?: number;
+  lng?: number;
+};
+
 export interface RouteProposal {
   distance_km: number;
   duration_min: number;
   estimated_calories: number;
   /** GeoJSON LineString */
   geojson: RouteProposalGeojson;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  mode?: string | null;
+  start_coords?: RouteProposalStartCoords;
+  end_coords?: RouteProposalEndCoords;
 }
 
 export type WalkingRouteInputStartLocation = {

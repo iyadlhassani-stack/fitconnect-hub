@@ -5,7 +5,9 @@
  * FitConnect API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RouteProposalEndCoords } from "./routeProposalEndCoords";
 import type { RouteProposalGeojson } from "./routeProposalGeojson";
+import type { RouteProposalStartCoords } from "./routeProposalStartCoords";
 
 export interface RouteProposal {
   distance_km: number;
@@ -13,4 +15,10 @@ export interface RouteProposal {
   estimated_calories: number;
   /** GeoJSON LineString */
   geojson: RouteProposalGeojson;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  mode?: string | null;
+  start_coords?: RouteProposalStartCoords;
+  end_coords?: RouteProposalEndCoords;
 }
