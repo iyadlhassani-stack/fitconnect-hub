@@ -222,13 +222,13 @@
   }
 
   html {
-    overflow-x: hidden;
+    overflow-x: clip;
     max-width: 100%;
   }
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    overflow-x: hidden;
+    overflow-x: clip;
     max-width: 100%;
     width: 100%;
   }

@@ -1,0 +1,43 @@
+Fix a modal centering bug in the FitConnect app.
+
+## PROBLEM
+Modals (especially "Add Meal" modal in the Track tab, and likely "Add Workout", "Add Weight" too) are NOT centered horizontally on the screen. They appear shifted to the left, with the left edge touching or close to the left edge of the screen.
+
+## EXPECTED BEHAVIOR
+All modals should be perfectly centered horizontally, with equal margin on left and right, on all screen sizes (mobile 375px, tablet 768px, desktop 1440px).
+
+## LIKELY CAUSE
+The previous fix that added `overflow-x: hidden` to the body may have broken the modal centering. Modals using `position: fixed` + `left: 50%` + `transform: translateX(-50%)` might be affected.
+
+## FIX
+
+1. Review ALL modals in the app:
+   - Add Meal modal (Track tab)
+   - Add Workout modal (Track tab)
+   - Add Weight modal (Track tab)
+   - Any other modal/dialog/popup
+
+2. For each modal, ensure proper centering using ONE of these approaches:
+
+   Option A - Flexbox overlay (preferred):
+   - Modal overlay: `position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;`
+   - Modal content: `max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;`
+
+   Option B - Absolute positioning:
+   - Modal overlay: `position: fixed; inset: 0;`
+   - Modal content: `position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 500px; width: calc(100% - 32px);`
+
+3. If using a UI library (shadcn/ui, Radix, Headless UI), verify the Dialog/Modal component is properly configured.
+
+4. Add a subtle backdrop: `background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);`
+
+5. Ensure modals work correctly with the existing `overflow-x: hidden` on body. If conflicts arise, the modal portal/overlay should be rendered at the body level (not nested inside a container with overflow hidden).
+
+## TESTING
+After fix, verify:
+1. Add Meal modal is centered on mobile (375px width)
+2. Add Meal modal is centered on desktop
+3. Equal left and right margins around the modal
+4. Modal doesn't overflow off-screen on small devices
+5. Background of the rest of the app is still scrollable when modal is closed
+6. No horizontal scroll appears anywhere
