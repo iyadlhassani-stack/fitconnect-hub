@@ -1,0 +1,184 @@
+Add a new feature to the existing Walk tab in FitConnect: route generation that prioritizes passing through scenic Points of Interest (POIs) like parks, monuments, squares, and viewpoints.
+
+## OVERVIEW
+
+When a user generates a walking route, the app should:
+1. Search for interesting POIs along/near the planned route
+2. Try to incorporate them as waypoints in the generated route
+3. Only do this if it doesn't significantly deviate from the user's goal (+/-10%)
+4. Display the POIs the user will encounter with photos before they start
+
+## API REQUIREMENTS
+
+### Overpass API (free, OpenStreetMap)
+For finding POIs:
+- Endpoint: https://overpass-api.de/api/interpreter
+- No API key needed
+- POST request with Overpass QL query
+
+POI types to fetch:
+- leisure=park (parks)
+- historic=monument or historic=memorial (monuments and memorials)
+- amenity=square or place=square (public squares)
+- tourism=viewpoint (scenic viewpoints)
+- amenity=fountain (fountains)
+
+Query example (around route bounding box):
+[out:json][timeout:25];
+(
+  node["leisure"="park"](BBOX);
+  node["historic"~"monument|memorial"](BBOX);
+  node["amenity"="square"](BBOX);
+  node["place"="square"](BBOX);
+  node["tourism"="viewpoint"](BBOX);
+  node["amenity"="fountain"](BBOX);
+  way["leisure"="park"](BBOX);
+);
+out center;
+
+Where BBOX is calculated from the route's bounding box, expanded by ~500m on each side.
+
+### Wikipedia API (free) - for photos and descriptions
+For each POI with a name:
+1. Search Wikipedia: https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages|extracts&exintro&explaintext&exsentences=2&pithumbsize=400&titles=POI_NAME&origin=*
+2. Also try French Wikipedia if user language is French: https://fr.wikipedia.org/w/api.php with same params
+3. Extract:
+   - thumbnail.source (photo URL)
+   - extract (short description)
+4. If no Wikipedia page found, use default icon based on POI type
+
+Default icons (use Lucide React icons):
+- Park: TreePine icon, green
+- Monument: Landmark icon, brown
+- Square: Building icon, gray
+- Viewpoint: Mountain icon, blue
+- Fountain: Droplet icon, cyan
+
+## USER INTERFACE
+
+### New section in Walk form: "Scenic Route Options"
+
+Add a new card/section in the Walk form, visible for Loop and A to B modes (not Custom Route since user picks own path).
+
+Card content:
+- Toggle switch: "Pass through scenic spots when possible" (default: ON)
+- When toggled ON, show category filters (chips/badges):
+  - Parks (default ON)
+  - Monuments (default ON)
+  - Squares (default ON)
+  - Viewpoints (default ON)
+  - Fountains (default ON)
+- User can tap to disable/enable specific categories
+- Small text below: "POIs are included only if they fit within +/-10% of your goal"
+
+### After route generation - POI Carousel
+
+Above the route results map, add a horizontal scrollable carousel:
+
+Header: "You'll pass by these spots" (or "Lieux que tu vas voir" in FR)
+
+Each card in the carousel:
+- Photo (Wikipedia or default icon background)
+- POI name (bold)
+- POI type icon + label (Park, Monument, etc.)
+- Short description (2 sentences from Wikipedia, or "A beautiful spot to discover" as fallback)
+- Distance from route (e.g., "On your way" or "200m detour")
+- Card dimensions: 280px wide, 320px tall
+- Tap to expand: opens a modal with larger photo + full description + "View on map" button (centers map on POI)
+
+If no POIs found, show a small note: "No scenic spots found on this route. Try a different starting point or larger area."
+
+## ROUTE GENERATION LOGIC
+
+### Algorithm
+1. Generate the BASE route first (Loop or A to B) without POI consideration
+2. Get the route's bounding box (min/max lat/lng)
+3. Query Overpass API for POIs within bbox expanded by 500m
+4. Filter POIs by user-selected categories
+5. Score each POI:
+   - Distance from route line: closer = higher score
+   - POI importance (parks > monuments > squares > viewpoints > fountains)
+   - Has Wikipedia photo: +bonus score
+6. Pick top 3-5 POIs to try incorporating
+7. Generate alternate route passing through these POIs as waypoints
+8. Check if alternate route is within +/-10% of user's goal:
+   - If YES: use alternate route, return POIs to display
+   - If NO: remove the least important POI and retry
+   - If after 3 retries still no fit: return base route + show POIs as "nearby" without forcing detour
+
+### Code structure
+Add new service file: services/poiService.js with functions:
+- searchPOIs(bbox, categories) -> returns array of POIs
+- enrichPOIWithWikipedia(poi, language) -> returns POI with photo and description
+- scorePOIs(pois, routeGeometry) -> returns sorted POIs
+- selectOptimalPOIs(pois, route, goalDistance) -> returns up to 5 POIs that fit
+
+## DATABASE
+
+Update walking_routes table schema (add column if not exists):
+- pois_included (jsonb): array of POIs the route passed through
+  - Each POI: {id, name, type, lat, lng, photo_url, description, source}
+
+Save POIs when route is saved to history.
+
+## DISPLAY IN HISTORY
+
+In the Walk history (existing), each saved route should now show:
+- Mini POI icons strip below the route summary
+- "3 scenic spots visited" with small icons
+
+## EDGE CASES
+
+1. POI has no Wikipedia entry:
+   - Show default icon for the POI type
+   - Description: "A nice spot to discover"
+
+2. Wikipedia API rate limit hit:
+   - Cache photos in localStorage for already-fetched POIs
+   - Gracefully fallback to default icons
+
+3. No POIs in the area (rural/suburban):
+   - Show note: "No scenic spots found nearby. Try a larger goal distance."
+
+4. POIs would make route too long:
+   - Strip the lowest-scored POI
+   - Retry until fits
+
+5. User disables ALL POI categories:
+   - Skip the entire POI logic
+   - Generate route as before
+
+## INTERNATIONALIZATION
+
+Add new translations for:
+- "Scenic Route Options"
+- "Pass through scenic spots when possible"
+- "Parks", "Monuments", "Squares", "Viewpoints", "Fountains"
+- "You'll pass by these spots"
+- "On your way"
+- "X meter detour"
+- "View on map"
+- "No scenic spots found nearby"
+- "scenic spots visited"
+
+## TESTING
+
+After implementation, verify:
+1. Generating a Loop in central Paris should find multiple POIs (parks, monuments)
+2. Generating an A to B route should include POIs along the way
+3. Carousel displays correctly on mobile and desktop
+4. Photos from Wikipedia load correctly
+5. Default icons appear for POIs without Wikipedia entries
+6. Toggling categories filters the results
+7. Disabling scenic spots toggle generates a regular route
+8. POIs persist in history after saving a route
+9. The +/-10% goal constraint is respected
+10. Performance is acceptable (route generation under 8 seconds even with POI logic)
+
+## DON'T BREAK
+
+- All 4 existing modes (Loop, A to B direct, A to B with detour, Custom) must continue to work
+- Existing weather feature must keep working
+- Custom Route mode does NOT use POI logic (user chooses own path)
+- Save to history, AI coach integration, external navigation must all keep working
+- FR/EN translations must include all new strings

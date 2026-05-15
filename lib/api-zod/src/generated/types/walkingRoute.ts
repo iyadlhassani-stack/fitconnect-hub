@@ -5,6 +5,7 @@
  * FitConnect API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RoutePOI } from "./routePOI";
 import type { WalkingRouteGeneratedRoute } from "./walkingRouteGeneratedRoute";
 import type { WalkingRouteStartLocation } from "./walkingRouteStartLocation";
 
@@ -21,5 +22,6 @@ export interface WalkingRoute {
   completed: boolean;
   /** @nullable */
   actual_calories?: number | null;
+  pois_included?: RoutePOI[] | null;
   created_at: string;
 }

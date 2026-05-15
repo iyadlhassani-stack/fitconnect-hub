@@ -7,6 +7,7 @@
  */
 import type { RouteGenerateInputMode } from "./routeGenerateInputMode";
 import type { RouteGenerateInputPace } from "./routeGenerateInputPace";
+import type { RouteGenerateInputPoiCategoriesItem } from "./routeGenerateInputPoiCategoriesItem";
 import type { RouteGenerateInputTargetType } from "./routeGenerateInputTargetType";
 import type { RouteGenerateInputWaypointsItem } from "./routeGenerateInputWaypointsItem";
 
@@ -30,4 +31,13 @@ export interface RouteGenerateInput {
   seed?: number | null;
   /** Full ordered list of coordinates for custom mode (start → stops → end) */
   waypoints?: RouteGenerateInputWaypointsItem[] | null;
+  /** Enable scenic POI discovery along the route (default true) */
+  enablePOI?: boolean | null;
+  /** POI categories to search for */
+  poiCategories?: RouteGenerateInputPoiCategoriesItem[] | null;
+  /**
+   * User language for Wikipedia enrichment (en or fr)
+   * @nullable
+   */
+  language?: string | null;
 }

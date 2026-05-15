@@ -5,6 +5,7 @@
  * FitConnect API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { RoutePOI } from "./routePOI";
 import type { RouteProposalEndCoords } from "./routeProposalEndCoords";
 import type { RouteProposalGeojson } from "./routeProposalGeojson";
 import type { RouteProposalStartCoords } from "./routeProposalStartCoords";
@@ -21,4 +22,6 @@ export interface RouteProposal {
   mode?: string | null;
   start_coords?: RouteProposalStartCoords;
   end_coords?: RouteProposalEndCoords;
+  /** Scenic POIs found along or near the route */
+  pois?: RoutePOI[] | null;
 }

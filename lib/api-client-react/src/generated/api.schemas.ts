@@ -191,6 +191,35 @@ export interface UserStats {
   weight_trend?: UserStatsWeightTrendItem[];
 }
 
+export type RoutePOIType = (typeof RoutePOIType)[keyof typeof RoutePOIType];
+
+export const RoutePOIType = {
+  park: "park",
+  monument: "monument",
+  square: "square",
+  viewpoint: "viewpoint",
+  fountain: "fountain",
+} as const;
+
+export interface RoutePOI {
+  id: string;
+  name: string;
+  type: RoutePOIType;
+  lat: number;
+  lng: number;
+  /** @nullable */
+  photo_url?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /**
+   * Distance from the route line in meters
+   * @nullable
+   */
+  distance_from_route?: number | null;
+  /** True when this POI is incorporated as a waypoint in the route */
+  on_route?: boolean;
+}
+
 export type RouteGenerateInputMode =
   (typeof RouteGenerateInputMode)[keyof typeof RouteGenerateInputMode];
 
@@ -224,6 +253,17 @@ export type RouteGenerateInputWaypointsItem = {
   lng: number;
 };
 
+export type RouteGenerateInputPoiCategoriesItem =
+  (typeof RouteGenerateInputPoiCategoriesItem)[keyof typeof RouteGenerateInputPoiCategoriesItem];
+
+export const RouteGenerateInputPoiCategoriesItem = {
+  park: "park",
+  monument: "monument",
+  square: "square",
+  viewpoint: "viewpoint",
+  fountain: "fountain",
+} as const;
+
 export interface RouteGenerateInput {
   mode?: RouteGenerateInputMode;
   lat: number;
@@ -244,6 +284,15 @@ export interface RouteGenerateInput {
   seed?: number | null;
   /** Full ordered list of coordinates for custom mode (start → stops → end) */
   waypoints?: RouteGenerateInputWaypointsItem[] | null;
+  /** Enable scenic POI discovery along the route (default true) */
+  enablePOI?: boolean | null;
+  /** POI categories to search for */
+  poiCategories?: RouteGenerateInputPoiCategoriesItem[] | null;
+  /**
+   * User language for Wikipedia enrichment (en or fr)
+   * @nullable
+   */
+  language?: string | null;
 }
 
 /**
@@ -273,6 +322,8 @@ export interface RouteProposal {
   mode?: string | null;
   start_coords?: RouteProposalStartCoords;
   end_coords?: RouteProposalEndCoords;
+  /** Scenic POIs found along or near the route */
+  pois?: RoutePOI[] | null;
 }
 
 export type WalkingRouteInputStartLocation = {
@@ -296,6 +347,7 @@ export interface WalkingRouteInput {
   completed?: boolean;
   /** @nullable */
   actual_calories?: number | null;
+  pois_included?: RoutePOI[] | null;
 }
 
 export type WalkingRouteStartLocation = { [key: string]: unknown };
@@ -315,6 +367,7 @@ export interface WalkingRoute {
   completed: boolean;
   /** @nullable */
   actual_calories?: number | null;
+  pois_included?: RoutePOI[] | null;
   created_at: string;
 }
 

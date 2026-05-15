@@ -303,6 +303,18 @@ export const GenerateWalkingRoutesBody = zod.object({
     .describe(
       "Full ordered list of coordinates for custom mode (start → stops → end)",
     ),
+  enablePOI: zod
+    .boolean()
+    .nullish()
+    .describe("Enable scenic POI discovery along the route (default true)"),
+  poiCategories: zod
+    .array(zod.enum(["park", "monument", "square", "viewpoint", "fountain"]))
+    .nullish()
+    .describe("POI categories to search for"),
+  language: zod
+    .string()
+    .nullish()
+    .describe("User language for Wikipedia enrichment (en or fr)"),
 });
 
 export const GenerateWalkingRoutesResponse = zod.object({
@@ -324,6 +336,30 @@ export const GenerateWalkingRoutesResponse = zod.object({
       lng: zod.number().optional(),
     })
     .optional(),
+  pois: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        name: zod.string(),
+        type: zod.enum(["park", "monument", "square", "viewpoint", "fountain"]),
+        lat: zod.number(),
+        lng: zod.number(),
+        photo_url: zod.string().nullish(),
+        description: zod.string().nullish(),
+        distance_from_route: zod
+          .number()
+          .nullish()
+          .describe("Distance from the route line in meters"),
+        on_route: zod
+          .boolean()
+          .optional()
+          .describe(
+            "True when this POI is incorporated as a waypoint in the route",
+          ),
+      }),
+    )
+    .nullish()
+    .describe("Scenic POIs found along or near the route"),
 });
 
 /**
@@ -344,6 +380,29 @@ export const SaveWalkingRouteBody = zod.object({
   estimated_calories: zod.number(),
   completed: zod.boolean().optional(),
   actual_calories: zod.number().nullish(),
+  pois_included: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        name: zod.string(),
+        type: zod.enum(["park", "monument", "square", "viewpoint", "fountain"]),
+        lat: zod.number(),
+        lng: zod.number(),
+        photo_url: zod.string().nullish(),
+        description: zod.string().nullish(),
+        distance_from_route: zod
+          .number()
+          .nullish()
+          .describe("Distance from the route line in meters"),
+        on_route: zod
+          .boolean()
+          .optional()
+          .describe(
+            "True when this POI is incorporated as a waypoint in the route",
+          ),
+      }),
+    )
+    .nullish(),
 });
 
 /**
@@ -365,6 +424,29 @@ export const GetRouteHistoryResponseItem = zod.object({
   estimated_calories: zod.number(),
   completed: zod.boolean(),
   actual_calories: zod.number().nullish(),
+  pois_included: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        name: zod.string(),
+        type: zod.enum(["park", "monument", "square", "viewpoint", "fountain"]),
+        lat: zod.number(),
+        lng: zod.number(),
+        photo_url: zod.string().nullish(),
+        description: zod.string().nullish(),
+        distance_from_route: zod
+          .number()
+          .nullish()
+          .describe("Distance from the route line in meters"),
+        on_route: zod
+          .boolean()
+          .optional()
+          .describe(
+            "True when this POI is incorporated as a waypoint in the route",
+          ),
+      }),
+    )
+    .nullish(),
   created_at: zod.string(),
 });
 export const GetRouteHistoryResponse = zod.array(GetRouteHistoryResponseItem);
