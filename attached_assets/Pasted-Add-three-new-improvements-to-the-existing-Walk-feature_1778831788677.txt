@@ -1,0 +1,157 @@
+Add three new improvements to the existing Walk feature in FitConnect.
+
+## SETUP - New API key required
+
+This implementation requires a new API key: OpenWeatherMap.
+At the start of your implementation, prompt me to add this key to Replit Secrets with the name: VITE_OPENWEATHERMAP_API_KEY
+
+Use the same flow you used for the other API keys (ANTHROPIC_API_KEY, VITE_OPENROUTESERVICE_API_KEY, etc.) - ask me through the Replit Secrets prompt, wait for confirmation, then proceed.
+
+If I don't have a key yet, tell me to:
+1. Go to https://openweathermap.org/api
+2. Sign up for free
+3. Get my API key from the "API keys" section in my profile
+4. Copy it and add it to Secrets
+
+The free tier allows 1000 calls/day which is plenty for this MVP.
+
+## IMPROVEMENT 1 - Weather forecast before generation
+
+Before any route is generated, ALWAYS display a weather card showing current and upcoming weather at the starting location.
+
+### Implementation
+1. Use OpenWeatherMap API (free tier)
+2. When user enters/selects a starting point, automatically fetch weather:
+   - Endpoint: https://api.openweathermap.org/data/2.5/weather?lat=LAT&lon=LNG&appid=KEY&units=metric&lang={user_language}
+   - And forecast for next 3 hours: https://api.openweathermap.org/data/2.5/forecast?lat=LAT&lon=LNG&appid=KEY&units=metric&cnt=2&lang={user_language}
+
+### Display
+Show a compact weather card above the "Generate" button, with:
+- Weather icon (sunny, cloudy, rainy, etc.) - use OpenWeatherMap icon URLs: https://openweathermap.org/img/wn/{icon_code}@2x.png
+- Current temperature in Celsius
+- Weather description (e.g., "Partly cloudy", "Light rain")
+- Feels-like temperature
+- Humidity %
+- Wind speed (km/h)
+- A "Forecast for the next 3h" mini-section showing the upcoming weather
+
+### Smart suggestions based on conditions
+
+Show contextual messages with colored badges:
+
+- Clear/sunny + 15-25°C: green badge "Perfect conditions for walking!"
+- Cloudy + comfortable temp: blue badge "Good walking weather"
+- Light rain forecast in next hour: orange badge "Light rain expected - bring an umbrella"
+- Heavy rain or thunderstorm now: red badge "Bad weather - consider rescheduling" + button "Remind me tomorrow morning"
+- Below 0C: blue badge "Cold! Dress warmly, watch for ice"
+- Above 30C: orange badge "Hot weather - bring water, prefer morning/evening hours"
+- Wind > 30 km/h: orange badge "Windy - walking may be tiring"
+
+### Integration with AI Coach
+If user generates a route during bad weather, the AI Coach should automatically send a message:
+"Hey, I noticed you're planning a walk but it's raining. Want me to remind you when conditions improve?"
+
+## IMPROVEMENT 2 - Custom Route mode with unlimited waypoints
+
+Add a NEW 4th mode to the Walk tab mode selector:
+
+### Mode "Custom Route" (placed after the 3 existing modes)
+
+UI Design:
+- Mode label: "Custom Route" with subtitle "Choose your exact path"
+- When selected, the form shows:
+
+Starting point: [address input with autocomplete + use my location + map button]
+
+Stop 1: [address input with autocomplete + use my location + map button] [X delete button]
+Stop 2: [address input with autocomplete + use my location + map button] [X delete button]
+[+ Add Stop button (green, with plus icon)]
+
+Final destination: [address input with autocomplete + use my location + map button]
+
+### Rules
+- User can add unlimited intermediate stops with the "+ Add Stop" button
+- Each stop can be deleted with an "X" button (cannot delete starting point or final destination)
+- Minimum: just starting point + final destination (no intermediate stops required)
+- All address inputs use the same 3-methods autocomplete (text + geolocation + map click)
+
+### Route generation
+- Call OpenRouteService /v2/directions/foot-walking with the full coordinates array
+- Pass all stops as waypoints: [start, stop1, stop2, ..., end]
+- OpenRouteService can handle up to 50 waypoints
+
+### Display
+- Map shows the full route with NUMBERED markers (1=start, 2=stop1, 3=stop2, ..., last=destination)
+- Stats card shows total distance, duration, calories
+- Save to history with mode = 'custom'
+
+### Goal/Pace
+- The goal (calories/minutes/km) is INFORMATIONAL in this mode (the user chose their path)
+- Pace selector still works to calculate accurate calories
+- Show note: "This is your custom path. Stats are calculated based on your chosen pace."
+
+## IMPROVEMENT 3 - Better Google Maps / Apple Maps / Waze integration
+
+Currently, when users click "Start Navigation", the external maps apps don't respect the generated route. Fix this by:
+
+### For Loop mode
+Google Maps and Apple Maps don't handle loops well because start = end. Solution:
+- DON'T directly send to Google Maps with start = end (it shows "you're at destination")
+- INSTEAD, decompose the loop into multiple segments
+- Take the route's GeoJSON LineString from OpenRouteService
+- Extract 4-6 evenly-distributed waypoints along the loop
+- Open Google Maps with these waypoints (excluding the duplicate start/end)
+- Format: https://www.google.com/maps/dir/?api=1&origin=LAT,LNG&destination=LAT,LNG&travelmode=walking&waypoints=LAT1,LNG1|LAT2,LNG2|LAT3,LNG3|LAT4,LNG4
+- Use a final destination different from start: pick the second-to-last waypoint as destination, and start as origin
+
+### For A->B modes (direct and with detour)
+To force external maps to follow OUR generated route (not their optimal one):
+- Extract 6-8 waypoints along the OpenRouteService route (evenly distributed)
+- Pass ALL waypoints to Google Maps URL
+- Google Maps accepts up to 10 waypoints on web
+- This significantly increases route fidelity vs just sending start + end
+
+### For Custom Route mode
+- Use the user-defined waypoints directly (already perfect)
+
+### Apple Maps limitations
+Apple Maps URL scheme doesn't support multiple waypoints well. For Apple Maps:
+- Show a warning message: "Apple Maps may use its own optimal route. For best results with multi-waypoint routes, use Google Maps."
+- Still provide the Apple Maps button as fallback
+
+### Waze
+- Waze doesn't support waypoints
+- Only show Waze for simple A->B direct mode
+- Hide Waze button for Loop, A->B with detour, and Custom modes
+- For these modes, only show Google Maps + Apple Maps
+
+### UI for navigation choice
+When user clicks "Start Navigation":
+- Show a bottom sheet with available options
+- Disabled buttons (with tooltip) for incompatible combos (e.g., Waze for Loop)
+- Recommendation badge: "Recommended" on Google Maps for routes with waypoints
+
+### Helper text
+Below the "Start Navigation" button, add a small note:
+"Note: External apps may slightly adjust the route. For maximum accuracy, follow the in-app map."
+
+## TESTING REQUIREMENTS
+After implementation, verify:
+1. Weather card displays for all 4 modes (Loop, A->B direct, A->B + kcal, Custom)
+2. Weather updates when starting point changes
+3. Weather badges show correct color/message based on conditions
+4. Custom Route mode lets you add/remove unlimited stops
+5. Custom Route generates a route through all chosen stops in order
+6. Numbered markers display correctly on the map
+7. Loop mode: Google Maps now shows the full loop with waypoints, doesn't say "you've arrived"
+8. A->B mode: external maps respect more closely the generated route (less deviation)
+9. Waze button is hidden for Loop and Custom modes
+10. Bad weather warning triggers AI coach message
+
+## DON'T BREAK
+- Existing 3 modes must continue to work
+- Address input methods (text, geolocation, map) must remain unchanged
+- Save to history must still work
+- Coach integration must still work
+- Mobile responsiveness must be preserved
+- FR/EN translations must include all new strings
