@@ -13,4 +13,5 @@ export const RouteGenerateInputMode = {
   loop: "loop",
   direct: "direct",
   calorie_detour: "calorie_detour",
+  custom: "custom",
 } as const;

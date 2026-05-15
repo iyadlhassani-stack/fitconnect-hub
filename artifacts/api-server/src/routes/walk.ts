@@ -263,7 +263,44 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
       return;
     }
 
-    res.status(400).json({ error: "Invalid mode" });
+    if (mode === 'custom') {
+      const waypoints = parsed.data.waypoints as Array<{ lat: number; lng: number }> | null | undefined;
+      if (!waypoints || waypoints.length < 2) {
+        res.status(400).json({ error: 'Custom mode requires at least 2 waypoints (start and end).' });
+        return;
+      }
+
+      const orsCoords: [number, number][] = waypoints.map((w) => [w.lng, w.lat]);
+      const lastW = waypoints[waypoints.length - 1];
+
+      if (!orsKey) {
+        let totalKm = 0;
+        for (let i = 1; i < waypoints.length; i++) {
+          totalKm += haversineKm(waypoints[i - 1].lat, waypoints[i - 1].lng, waypoints[i].lat, waypoints[i].lng);
+        }
+        const durationS = (totalKm / speedKmh) * 3600;
+        res.json({
+          ...buildResult(totalKm * 1000, durationS, orsCoords, 'Custom route through your chosen stops.'),
+          end_coords: { lat: lastW.lat, lng: lastW.lng },
+        });
+        return;
+      }
+
+      const result = await callORS(orsCoords, null, orsKey);
+      if (!result) {
+        req.log.warn('ORS custom route failed');
+        res.status(500).json({ error: 'Failed to generate custom route. Try adjusting your stops.' });
+        return;
+      }
+
+      res.json({
+        ...buildResult(result.distance, result.duration, result.coordinates, 'Custom route through your chosen stops.'),
+        end_coords: { lat: lastW.lat, lng: lastW.lng },
+      });
+      return;
+    }
+
+    res.status(400).json({ error: 'Invalid mode' });
   } catch (err) {
     req.log.error({ err }, "Failed to generate route");
     res.status(500).json({ error: "Failed to generate walking route" });

@@ -8,6 +8,7 @@
 import type { RouteGenerateInputMode } from "./routeGenerateInputMode";
 import type { RouteGenerateInputPace } from "./routeGenerateInputPace";
 import type { RouteGenerateInputTargetType } from "./routeGenerateInputTargetType";
+import type { RouteGenerateInputWaypointsItem } from "./routeGenerateInputWaypointsItem";
 
 export interface RouteGenerateInput {
   mode?: RouteGenerateInputMode;
@@ -27,4 +28,6 @@ export interface RouteGenerateInput {
   weightKg: number;
   /** @nullable */
   seed?: number | null;
+  /** Full ordered list of coordinates for custom mode (start → stops → end) */
+  waypoints?: RouteGenerateInputWaypointsItem[] | null;
 }

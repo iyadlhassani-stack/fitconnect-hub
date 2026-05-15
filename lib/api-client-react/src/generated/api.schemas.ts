@@ -198,6 +198,7 @@ export const RouteGenerateInputMode = {
   loop: "loop",
   direct: "direct",
   calorie_detour: "calorie_detour",
+  custom: "custom",
 } as const;
 
 export type RouteGenerateInputTargetType =
@@ -218,6 +219,11 @@ export const RouteGenerateInputPace = {
   fast: "fast",
 } as const;
 
+export type RouteGenerateInputWaypointsItem = {
+  lat: number;
+  lng: number;
+};
+
 export interface RouteGenerateInput {
   mode?: RouteGenerateInputMode;
   lat: number;
@@ -236,6 +242,8 @@ export interface RouteGenerateInput {
   weightKg: number;
   /** @nullable */
   seed?: number | null;
+  /** Full ordered list of coordinates for custom mode (start → stops → end) */
+  waypoints?: RouteGenerateInputWaypointsItem[] | null;
 }
 
 /**

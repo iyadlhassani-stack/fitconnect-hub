@@ -31,6 +31,7 @@ export * from "./routeGenerateInput";
 export * from "./routeGenerateInputMode";
 export * from "./routeGenerateInputPace";
 export * from "./routeGenerateInputTargetType";
+export * from "./routeGenerateInputWaypointsItem";
 export * from "./routeProposal";
 export * from "./routeProposalEndCoords";
 export * from "./routeProposalGeojson";

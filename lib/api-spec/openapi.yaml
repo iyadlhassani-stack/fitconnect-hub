@@ -522,7 +522,7 @@ components:
       properties:
         mode:
           type: string
-          enum: [loop, direct, calorie_detour]
+          enum: [loop, direct, calorie_detour, custom]
           default: loop
         lat:
           type: number
@@ -548,6 +548,18 @@ components:
           type: number
         seed:
           type: ["number", "null"]
+        waypoints:
+          type: array
+          nullable: true
+          description: Full ordered list of coordinates for custom mode (start → stops → end)
+          items:
+            type: object
+            required: [lat, lng]
+            properties:
+              lat:
+                type: number
+              lng:
+                type: number
 
     RouteProposal:
       type: object

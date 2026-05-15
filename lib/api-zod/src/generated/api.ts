@@ -279,7 +279,7 @@ export const generateWalkingRoutesBodyModeDefault = `loop`;
 
 export const GenerateWalkingRoutesBody = zod.object({
   mode: zod
-    .enum(["loop", "direct", "calorie_detour"])
+    .enum(["loop", "direct", "calorie_detour", "custom"])
     .default(generateWalkingRoutesBodyModeDefault),
   lat: zod.number(),
   lng: zod.number(),
@@ -292,6 +292,17 @@ export const GenerateWalkingRoutesBody = zod.object({
   pace: zod.enum(["slow", "normal", "fast"]),
   weightKg: zod.number(),
   seed: zod.number().nullish(),
+  waypoints: zod
+    .array(
+      zod.object({
+        lat: zod.number(),
+        lng: zod.number(),
+      }),
+    )
+    .nullish()
+    .describe(
+      "Full ordered list of coordinates for custom mode (start → stops → end)",
+    ),
 });
 
 export const GenerateWalkingRoutesResponse = zod.object({
