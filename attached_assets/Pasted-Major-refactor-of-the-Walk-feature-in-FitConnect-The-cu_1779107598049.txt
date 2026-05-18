@@ -1,0 +1,204 @@
+Major refactor of the Walk feature in FitConnect. The current implementation has multiple critical bugs in the route generation algorithm, redundant modes, and broken POI integration. Rebuild it cleanly.
+
+## OBJECTIVES
+
+1. Simplify from 4 modes to 3 clear modes
+2. Fix the math algorithm completely (currently wrong)
+3. Add intelligent error handling for impossible goals
+4. Disable POI integration (it does not work, will be redone later)
+5. Keep weather forecast working as is
+6. Keep navigation buttons (Google Maps / Apple Maps / Waze) as they are
+
+## NEW MODE STRUCTURE - 3 MODES ONLY
+
+Remove the existing mode "A to B + Calories" (it was redundant with A to B + goal).
+Keep and refine these 3 modes:
+
+### Mode 1: Loop
+- User inputs: 1 starting point
+- User inputs: goal type (Calories OR Minutes OR Distance)
+- User inputs: goal value
+- User inputs: walking pace (Slow/Normal/Fast)
+- App generates: a circular route that returns to the starting point
+
+### Mode 2: A to B (intelligent)
+- User inputs: starting point
+- User inputs: end point
+- User inputs: walking pace (Slow/Normal/Fast)
+- Goal is OPTIONAL (not required):
+  - If goal NOT filled OR goal less than direct route: generate direct shortest route
+  - If goal greater than direct route: generate route with detour to reach the goal
+  - If goal impossible (e.g., 100 kcal requested but direct route requires 350 kcal minimum): show clear error message, do NOT generate a fake route
+
+### Mode 3: Custom Route
+- User inputs: starting point
+- User inputs: 0 to many intermediate stops with + Add Stop and X delete buttons
+- User inputs: final destination
+- User inputs: walking pace
+- NO goal field in this mode (user chose the path)
+- App generates: route passing through all waypoints in order
+- Display: actual stats of the generated route (distance, duration, calories)
+
+## ALGORITHM - COMPLETE REWRITE
+
+The current calculation logic is fundamentally broken. Rewrite it with this clean structure.
+
+### Single source of truth: services/walkService.js
+
+Create or rewrite this file with these pure functions:
+
+MET_VALUES = { slow: 3.0, normal: 3.5, fast: 4.5 }
+SPEED_VALUES = { slow: 4, normal: 5, fast: 6 } (km/h)
+
+Functions to implement:
+- durationFromCalories(calories, weight_kg, pace) returns minutes
+  formula: (calories / (MET * weight_kg)) * 60
+- distanceFromDuration(duration_min, pace) returns km
+  formula: (duration_min / 60) * speed
+- distanceFromCalories(calories, weight_kg, pace) returns km
+  combines the two above
+- caloriesFromDistance(distance_km, weight_kg, pace) returns kcal
+  formula: MET * weight_kg * (duration_min / 60)
+- durationFromDistance(distance_km, pace) returns minutes
+  formula: (distance_km / speed) * 60
+- goalToTargetDistance(goalType, goalValue, weight_kg, pace) returns km
+  switch on goalType
+- computeRouteStats(actualDistance_km, weight_kg, pace) returns { distance_km, duration_min, calories, pace }
+
+### CRITICAL RULES
+
+1. After OpenRouteService returns a route, ALWAYS use computeRouteStats(actualDistance, userWeight, pace) to display stats. Do NOT use the duration/calories returned by OpenRouteService (they are not personalized).
+
+2. The displayed calories MUST be consistent with the displayed distance and pace. For the same distance across paces, kcal should vary by less than 15% (not 50%+ like currently).
+
+3. The DURATION must change clearly with pace:
+   - 5 km at slow pace = approximately 75 minutes
+   - 5 km at normal pace = approximately 60 minutes
+   - 5 km at fast pace = approximately 50 minutes
+
+## ROUTE GENERATION LOGIC PER MODE
+
+### Mode 1: Loop
+1. Convert goal to target distance: targetKm = goalToTargetDistance(...)
+2. Validate: if targetKm < 0.5 km, show error "Distance too short. Minimum is 500m"
+3. Validate: if targetKm > 50 km, show error "Distance too long. Maximum is 50km"
+4. Call OpenRouteService /v2/directions/foot-walking with options.round_trip:
+   length: targetKm * 1000 meters, points: 5, seed: random
+5. Compute stats from the ACTUAL distance returned by ORS using computeRouteStats()
+6. Display: distance, duration, calories
+
+### Mode 2: A to B (intelligent)
+1. Generate the direct A to B route first via OpenRouteService
+2. Get direct distance: directKm
+3. Compute stats for direct route: directStats = computeRouteStats(directKm, weight, pace)
+
+4. If user did NOT fill a goal:
+   - Use the direct route as-is
+   - Display stats of direct route
+   - Label: "Direct route"
+
+5. If user filled a goal:
+   - Compute target distance: targetKm = goalToTargetDistance(...)
+   - If targetKm < directKm (impossible):
+     - Show RED error card: "Goal impossible. The direct walk from A to B already requires X km / Y min / Z kcal."
+     - Show button: "Use direct route anyway" generates direct route with its real stats
+     - Show button: "Adjust goal" scrolls to goal input
+     - Do NOT generate a fake route
+   - If targetKm greater than or equal to directKm:
+     - Calculate detour needed: detourKm = targetKm - directKm
+     - Find a waypoint to add the detour:
+       - Compute midpoint M of A-B
+       - Add perpendicular offset from M of detourKm / 2
+       - Try generating A to waypoint to B
+       - Check if actual distance is within 10% of target
+       - If not, try different perpendicular offset
+       - Maximum 3 attempts
+     - If all attempts fail, show YELLOW warning: "Closest match: X km. Your goal was Y km."
+     - Compute stats from ACTUAL distance returned
+
+### Mode 3: Custom Route
+1. Validate: at least starting and ending points provided
+2. Call OpenRouteService with all waypoints in order
+3. If route generation fails:
+   - Show error: "Could not connect these points by walking."
+4. Compute stats from ACTUAL distance using computeRouteStats()
+5. Display: distance, duration, calories
+6. Show note: "Custom path. Stats calculated based on your pace."
+
+## INTELLIGENT ERROR MESSAGES
+
+Replace ALL generic "Couldn't find a route" errors with specific diagnostic messages:
+- "No walking path found between these points. They may not be reachable on foot."
+- "Goal impossible. Direct distance is too long for your kcal/minutes goal."
+- "Goal too short. Minimum walking distance is 500m."
+- "Goal too long. Maximum walking distance is 50km."
+- "OpenStreetMap has no data for this area. Try a nearby major city."
+
+Display as colored cards:
+- Red card for impossible/critical errors
+- Yellow card for approximations/warnings
+- Green check for success
+
+## REMOVE POI INTEGRATION
+
+The POI feature does not work. Remove or completely deactivate:
+- Remove "Pass through scenic spots" toggle from the UI
+- Remove the POI category filters
+- Remove the POI carousel that appears after route generation
+- Remove POI logic from route generation
+- Keep the services/poiService.js file but do NOT call it anywhere
+- Remove "pois_included" data from displayed history if it pollutes the UI
+
+This will be redone properly in a future sprint.
+
+## KEEP WORKING
+
+These features must continue to work without changes:
+- Weather forecast card (works well, do NOT modify)
+- Address autocomplete with Nominatim
+- "Use my location" geolocation button
+- Interactive map for picking points
+- Multi-language FR/EN
+- Save to History
+- Coach IA integration (notify when route saved)
+- Google Maps / Apple Maps / Waze navigation buttons (keep as is)
+
+## TESTING REQUIREMENTS
+
+After implementation, verify ALL of these:
+
+1. Mode Loop: target 100 kcal, weight 80kg, normal pace
+   Expected: distance ~1.5-1.8 km, duration ~20 min, calories ~100 (+/- 10%)
+
+2. Mode Loop: target 5 km
+   - Slow pace: duration ~75 min
+   - Normal pace: duration ~60 min
+   - Fast pace: duration ~50 min
+   - Calories at all paces should be within 15% range of each other
+
+3. Mode A to B: Saint-Ouen to Tour Eiffel WITHOUT goal
+   Expected: direct route displayed with real stats, no error
+
+4. Mode A to B: Saint-Ouen to Tour Eiffel WITH goal 100 kcal
+   Expected: RED error card explaining the direct route already requires more, with two action buttons
+
+5. Mode A to B: Saint-Ouen to Tour Eiffel WITH goal 600 kcal
+   Expected: route with detour, stats within 10% of target
+
+6. Mode Custom Route: Saint-Ouen to Pigalle to Tour Eiffel
+   Expected: route through all 3 points, no error
+
+7. No POI carousel anywhere
+
+8. Weather card still displays correctly
+
+9. Google Maps / Apple Maps buttons still work
+
+## DON'T BREAK
+
+- All other tabs (Home, Coach, Track) must continue to work
+- Bottom navigation
+- Existing design system colors
+- FR/EN translations for new error messages
+- Save to history functionality
+- Coach IA notifications after walks

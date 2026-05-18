@@ -518,11 +518,11 @@ components:
 
     RouteGenerateInput:
       type: object
-      required: [lat, lng, targetType, targetValue, pace, weightKg]
+      required: [lat, lng, pace, weightKg]
       properties:
         mode:
           type: string
-          enum: [loop, direct, calorie_detour, custom]
+          enum: [loop, direct, custom]
           default: loop
         lat:
           type: number
@@ -578,6 +578,27 @@ components:
           type: ["string", "null"]
         mode:
           type: ["string", "null"]
+        warning:
+          type: boolean
+          nullable: true
+          description: True when route is an approximation
+        goal_impossible:
+          type: boolean
+          nullable: true
+          description: True when user goal is less than the direct route requires
+        target_km:
+          type: number
+          nullable: true
+          description: Requested target distance in km
+        direct_km:
+          type: number
+          nullable: true
+        direct_duration_min:
+          type: number
+          nullable: true
+        direct_calories:
+          type: number
+          nullable: true
         start_coords:
           type: object
           properties:

@@ -197,7 +197,6 @@ export type RouteGenerateInputMode =
 export const RouteGenerateInputMode = {
   loop: "loop",
   direct: "direct",
-  calorie_detour: "calorie_detour",
   custom: "custom",
 } as const;
 
@@ -236,8 +235,8 @@ export interface RouteGenerateInput {
   endLng?: number | null;
   /** @nullable */
   endAddress?: string | null;
-  targetType: RouteGenerateInputTargetType;
-  targetValue: number;
+  targetType?: RouteGenerateInputTargetType;
+  targetValue?: number;
   pace: RouteGenerateInputPace;
   weightKg: number;
   /** @nullable */
@@ -271,6 +270,15 @@ export interface RouteProposal {
   note?: string | null;
   /** @nullable */
   mode?: string | null;
+  /** True when route is an approximation */
+  warning?: boolean | null;
+  /** True when user goal is less than the direct route requires */
+  goal_impossible?: boolean | null;
+  /** Requested target distance in km */
+  target_km?: number | null;
+  direct_km?: number | null;
+  direct_duration_min?: number | null;
+  direct_calories?: number | null;
   start_coords?: RouteProposalStartCoords;
   end_coords?: RouteProposalEndCoords;
 }

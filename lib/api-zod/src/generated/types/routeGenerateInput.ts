@@ -22,8 +22,8 @@ export interface RouteGenerateInput {
   endLng?: number | null;
   /** @nullable */
   endAddress?: string | null;
-  targetType: RouteGenerateInputTargetType;
-  targetValue: number;
+  targetType?: RouteGenerateInputTargetType;
+  targetValue?: number;
   pace: RouteGenerateInputPace;
   weightKg: number;
   /** @nullable */

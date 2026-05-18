@@ -279,7 +279,7 @@ export const generateWalkingRoutesBodyModeDefault = `loop`;
 
 export const GenerateWalkingRoutesBody = zod.object({
   mode: zod
-    .enum(["loop", "direct", "calorie_detour", "custom"])
+    .enum(["loop", "direct", "custom"])
     .default(generateWalkingRoutesBodyModeDefault),
   lat: zod.number(),
   lng: zod.number(),
@@ -287,8 +287,8 @@ export const GenerateWalkingRoutesBody = zod.object({
   endLat: zod.number().nullish(),
   endLng: zod.number().nullish(),
   endAddress: zod.string().nullish(),
-  targetType: zod.enum(["calories", "minutes", "distance"]),
-  targetValue: zod.number(),
+  targetType: zod.enum(["calories", "minutes", "distance"]).optional(),
+  targetValue: zod.number().optional(),
   pace: zod.enum(["slow", "normal", "fast"]),
   weightKg: zod.number(),
   seed: zod.number().nullish(),
@@ -312,6 +312,18 @@ export const GenerateWalkingRoutesResponse = zod.object({
   geojson: zod.object({}).passthrough().describe("GeoJSON LineString"),
   note: zod.string().nullish(),
   mode: zod.string().nullish(),
+  warning: zod
+    .boolean()
+    .nullish()
+    .describe("True when route is an approximation"),
+  goal_impossible: zod
+    .boolean()
+    .nullish()
+    .describe("True when user goal is less than the direct route requires"),
+  target_km: zod.number().nullish().describe("Requested target distance in km"),
+  direct_km: zod.number().nullish(),
+  direct_duration_min: zod.number().nullish(),
+  direct_calories: zod.number().nullish(),
   start_coords: zod
     .object({
       lat: zod.number().optional(),
