@@ -139,14 +139,58 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
         return;
       }
 
+      // ORS round_trip treats `length` as a hint and commonly returns 1.5–2× the
+      // requested distance (especially for short loops). Strategy: try three
+      // progressively compressed lengths so the actual returned distance lands
+      // as close as possible to targetKm.
       const usedSeed = seed ?? Math.floor(Math.random() * 1000);
-      const result = await callORS([[lng, lat]], { round_trip: { length: Math.round(targetKm * 1000), points: 5, seed: usedSeed } }, orsKey);
-      if (!result) {
+
+      // Compression factors: ask ORS for less than we want, knowing it overshoots.
+      // 0.55 → ORS typically returns ~targetKm for most urban areas.
+      const compressionFactors = [0.55, 0.40, 1.0];
+      let bestResult: OrsResult | null = null;
+      let bestActualKm = 0;
+
+      for (const factor of compressionFactors) {
+        const requestLenM = Math.round(targetKm * factor * 1000);
+        // ORS hard minimum for round_trip is 1000 m but in practice ~1000 m is fine.
+        const clampedLenM = Math.max(requestLenM, 1000);
+        const attempt = await callORS(
+          [[lng, lat]],
+          { round_trip: { length: clampedLenM, points: 5, seed: usedSeed + compressionFactors.indexOf(factor) } },
+          orsKey
+        );
+        if (!attempt) continue;
+        const actualKm = attempt.distance / 1000;
+        const err = Math.abs(actualKm - targetKm);
+        if (!bestResult || err < Math.abs(bestActualKm - targetKm)) {
+          bestResult = attempt;
+          bestActualKm = actualKm;
+        }
+        // Good enough — stop early (within 15%)
+        if (err / targetKm <= 0.15) break;
+      }
+
+      if (!bestResult) {
         res.status(500).json({ error: "No walking path found. OpenStreetMap may have no data for this area. Try a nearby major city." });
         return;
       }
-      const stats = computeRouteStats(result.distance / 1000, weightKg, pace);
-      res.json({ ...stats, geojson: { type: "LineString", coordinates: result.coordinates }, note: null, mode: "loop", start_coords: { lat, lng }, end_coords: { lat, lng } });
+
+      const stats = computeRouteStats(bestActualKm, weightKg, pace);
+      const deviation = Math.abs(bestActualKm - targetKm) / targetKm;
+      const loopNote = deviation > 0.15
+        ? `Closest loop available: ${bestActualKm.toFixed(1)} km. Your goal was ${targetKm.toFixed(1)} km.`
+        : null;
+
+      res.json({
+        ...stats,
+        geojson: { type: "LineString", coordinates: bestResult.coordinates },
+        note: loopNote,
+        warning: deviation > 0.15,
+        mode: "loop",
+        start_coords: { lat, lng },
+        end_coords: { lat, lng },
+      });
       return;
     }
 

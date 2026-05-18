@@ -1,0 +1,108 @@
+The Loop mode in the Walk feature is still broken after the recent refactor. 
+The other modes (A to B intelligent, Custom Route) work correctly, but Loop 
+consistently generates routes that are ~2x larger than requested.
+
+## ACTUAL BUGS OBSERVED
+
+Test case 1: User requests 100 kcal goal, Slow pace (4 km/h)
+- Expected: ~1.25 km, ~20 min, ~100 kcal
+- Actual: 2.57 km, 39 min, 160 kcal
+- Error: ~95% too long, ~60% too many calories
+
+Test case 2: User requests 150 kcal goal, Normal pace (5 km/h)
+- Expected: ~1.78 km, ~21 min, ~150 kcal
+- Actual: 3.65 km, 44 min, 212 kcal
+- Error: ~100% too long
+
+Test case 3: User requests 15 minutes goal, Slow pace
+- Expected: 1 km, 15 min, ~63 kcal
+- Actual: 2 km, 30 min, 124 kcal
+- Error: 100% too long on duration
+
+The duration is consistently approximately 2x what was requested. The kcal 
+displayed are computed correctly from the actual distance returned by 
+OpenRouteService, BUT the actual distance is wrong (2x what was asked).
+
+## ROOT CAUSE TO INVESTIGATE
+
+Most likely causes (in priority order):
+
+1. The conversion from goal to target distance is using wrong formulas 
+   or wrong user weight. Verify that walkService.js functions are actually 
+   used by the Loop mode handler.
+
+2. OpenRouteService /v2/directions/foot-walking endpoint has a MINIMUM 
+   round_trip length. If you request length: 830m, ORS may silently 
+   generate a 1.5-2 km loop instead. Check ORS documentation for round_trip 
+   minimum length.
+
+3. The length parameter passed to ORS may be in wrong units (km vs meters 
+   confusion).
+
+4. The route length returned by ORS may be measured in meters but interpreted 
+   as kilometers somewhere in the code (double conversion).
+
+## REQUIRED FIX
+
+1. Open services/walkService.js and verify the formulas are correct:
+   - durationFromCalories(calories, weight_kg, pace) should return minutes
+   - distanceFromCalories(calories, weight_kg, pace) should return km
+   - For 100 kcal, weight 80kg, slow pace (MET 3.0, 4 km/h):
+     duration = (100 / (3.0 * 80)) * 60 = 25 minutes
+     distance = (25/60) * 4 = 1.67 km
+
+2. Open the Loop mode handler and add EXPLICIT console logs:
+   console.log("Loop request:", { goalType, goalValue, weight, pace });
+   console.log("Computed targetKm:", targetKm);
+   console.log("ORS request length (meters):", targetKm * 1000);
+   console.log("ORS actual distance returned (meters):", actualMeters);
+   console.log("Final stats:", finalStats);
+
+3. Inspect the OpenRouteService request being sent. The length parameter 
+   MUST be in METERS, not kilometers. If targetKm is 1.67, you must send 
+   length: 1670, NOT length: 1.67.
+
+4. If OpenRouteService has a minimum round_trip length (e.g., 1500m), 
+   detect this case BEFORE calling the API:
+   - If targetKm * 1000 < 1500, show a warning to the user:
+     "Minimum loop distance is 1.5km. Your goal corresponds to a shorter 
+     loop. Generating the minimum loop instead."
+   - Then proceed with length: 1500
+   - This way the user is NOT misled by a 2x larger route silently
+
+5. After receiving the route from ORS, compute stats from the ACTUAL 
+   distance returned, NOT from the originally requested distance.
+
+6. If actualDistance returned is more than 30% different from targetKm, 
+   show a warning card to the user explaining the discrepancy.
+
+## TEST SCENARIOS TO VERIFY AFTER FIX
+
+After implementation, generate Loop routes with these parameters and 
+verify the actual results match within +/- 15%:
+
+1. Goal: 100 kcal, weight 80kg, Slow pace (4 km/h)
+   - Expected: ~1.5 km (minimum), duration ~22 min, kcal close to 100
+   - If ORS minimum kicks in: warning message shown
+
+2. Goal: 300 kcal, weight 80kg, Normal pace (5 km/h)
+   - Expected: ~4.3 km, duration ~51 min, kcal ~300
+
+3. Goal: 15 minutes, weight 80kg, Slow pace (4 km/h)
+   - Expected: ~1.5 km (minimum) or close to 1 km, duration ~15 min
+
+4. Goal: 60 minutes, weight 80kg, Normal pace (5 km/h)
+   - Expected: ~5 km, duration ~60 min, kcal ~300
+
+5. Goal: 5 km, weight 80kg, Fast pace (6 km/h)
+   - Expected: 5 km, duration ~50 min, kcal ~300
+
+## DO NOT BREAK
+
+- A to B intelligent mode (works correctly, do NOT modify)
+- Custom Route mode (works correctly, do NOT modify)
+- Weather card
+- All other tabs (Home, Coach, Track)
+- Multi-language FR/EN
+- Save to History
+- Coach IA integration
