@@ -641,6 +641,19 @@ components:
           type: boolean
         actual_calories:
           type: ["number", "null"]
+        actual_distance_km:
+          type: ["number", "null"]
+        actual_duration_sec:
+          type: ["integer", "null"]
+        gps_track:
+          type: object
+          nullable: true
+        average_speed_kmh:
+          type: ["number", "null"]
+        pauses_count:
+          type: ["integer", "null"]
+        completed_at:
+          type: ["string", "null"]
 
     WalkingRoute:
       type: object
@@ -668,6 +681,19 @@ components:
           type: boolean
         actual_calories:
           type: ["number", "null"]
+        actual_distance_km:
+          type: ["number", "null"]
+        actual_duration_sec:
+          type: ["integer", "null"]
+        gps_track:
+          type: object
+          nullable: true
+        average_speed_kmh:
+          type: ["number", "null"]
+        pauses_count:
+          type: ["integer", "null"]
+        completed_at:
+          type: ["string", "null"]
         created_at:
           type: string
 

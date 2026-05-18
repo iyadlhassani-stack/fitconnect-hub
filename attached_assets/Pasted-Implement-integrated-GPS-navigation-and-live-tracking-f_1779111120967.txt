@@ -1,0 +1,376 @@
+Implement integrated GPS navigation and live tracking for the Walk feature in FitConnect. This replaces the broken external Google Maps redirect with a native in-app experience similar to Strava.
+
+## OVERVIEW
+
+When user clicks "Start Navigation" on a generated route, instead of opening Google Maps, open a full-screen tracking experience inside FitConnect:
+- Full-screen Leaflet map showing the planned route
+- Real-time GPS position tracking (user's blue dot)
+- Live distance, duration, calories, speed updates
+- Turn-by-turn voice + haptic + visual instructions
+- Auto-pause + manual pause/resume controls
+- Off-route detection with alerts
+- Final detailed summary with chart + auto-save to Daily Log
+
+## TECHNICAL APPROACH
+
+### Web APIs to use (all native, no new keys needed)
+- navigator.geolocation.watchPosition() for live GPS tracking
+- navigator.wakeLock.request("screen") for keeping screen awake
+- window.speechSynthesis (Web Speech API) for voice instructions
+- navigator.vibrate() for haptic feedback (Android only - Apple blocks this on Safari)
+- Chart.js for the final speed/time chart (already in project)
+
+### New files to create
+- src/components/walk/NavigationScreen.jsx - the full-screen tracking UI
+- src/components/walk/RouteSummary.jsx - the post-walk summary screen
+- src/services/trackingService.js - GPS tracking logic
+- src/services/voiceService.js - voice instructions logic
+- src/utils/geoUtils.js - Haversine distance, snap-to-route algorithms
+
+### Database update
+Add to walking_routes table:
+- actual_distance_km (numeric) - real distance walked
+- actual_duration_seconds (integer) - real time spent
+- actual_calories (numeric) - real calories burned (computed from actual data)
+- gps_track (jsonb) - array of {lat, lng, timestamp, speed} points
+- average_speed_kmh (numeric)
+- pauses_count (integer)
+- completed_at (timestamp)
+
+## FEATURE 1: START NAVIGATION FLOW
+
+When user clicks "Start Navigation" on a generated route:
+
+1. Show a confirmation screen (modal):
+   - "Ready to start your walk?"
+   - Quick recap: distance, duration, calories
+   - Reminders specific to platform:
+     * On iOS: "Keep your screen on during the walk. We'll handle the rest."
+     * On Android: "Tracking works even with screen off."
+   - Button "Activate voice guidance" (user must click to enable Web Speech API on iOS Safari)
+   - Button "Start Walking" (large, green)
+
+2. On "Start Walking":
+   - Request geolocation permission if not yet granted
+   - Request Wake Lock if on iOS or if user toggled "keep screen on"
+   - Start GPS tracking
+   - Transition to full-screen NavigationScreen
+
+## FEATURE 2: NAVIGATION SCREEN UI
+
+Full-screen layout (no bottom tab bar visible):
+
+### Top section (overlay on map):
+- Small header with: route name, "Back" button (with confirmation if walking)
+- Next instruction card: "In 200m, turn right on Rue de Rivoli" (auto-updates)
+- Distance to next turn
+
+### Middle section (the map):
+- Leaflet map centered on user, auto-follow
+- Planned route as green semi-transparent line (opacity 0.5, thickness 6px)
+- Actual walked path as solid blue line (drawn progressively as user walks)
+- User position: pulsing blue dot
+- Direction indicator (small arrow showing heading)
+- POI markers if any (deactivated for now per Sprint A scope, but keep the structure)
+
+### Bottom section (stats bar, fixed bottom):
+5 stats in a horizontal layout:
+- Distance: "1.2 km / 3.5 km" (walked / total)
+- Duration: "15:32" (mm:ss)
+- Calories: "87 kcal"
+- Average speed: "4.8 km/h"
+- Current speed: "5.2 km/h"
+
+Below the stats, two large buttons:
+- Pause/Resume (yellow, toggles state)
+- Stop (red, triggers confirmation then ends walk)
+
+## FEATURE 3: LIVE GPS TRACKING
+
+In trackingService.js:
+
+1. Start tracking on Navigation screen mount:
+   navigator.geolocation.watchPosition(
+     onSuccess,
+     onError,
+     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+   )
+
+2. Every position update:
+   - Add point to gps_track array: {lat, lng, timestamp, speed, accuracy}
+   - Compute distance from last point using Haversine formula
+   - Update total walked distance
+   - Update current speed
+   - Update average speed (total distance / elapsed time)
+   - Update calories: MET * weight * (elapsed_hours)
+     where MET adjusts based on current speed:
+     <4 km/h: MET 2.5
+     4-5 km/h: MET 3.0
+     5-6 km/h: MET 3.5
+     6-7 km/h: MET 4.5
+     >7 km/h: MET 5.5
+   - Trigger UI re-render with new stats
+
+3. Snap-to-route algorithm:
+   - For each new GPS point, find the nearest point on the planned route polyline
+   - If distance from planned route is < 30m: display user position snapped to route
+   - If distance > 50m: trigger off-route alert (see Feature 6)
+   - Use Turf.js library for line operations: nearestPointOnLine, lineDistance
+
+4. GPS accuracy handling:
+   - If accuracy > 50m: show "GPS signal weak" indicator
+   - Ignore points with accuracy > 100m (too unreliable)
+
+## FEATURE 4: AUTO-PAUSE + MANUAL PAUSE
+
+Auto-pause detection:
+- Track speed over the last 30 seconds (rolling window)
+- If average speed < 0.5 km/h for 30 consecutive seconds: trigger auto-pause
+- Show banner: "Auto-paused - resume when you start walking"
+- Stop incrementing duration and calories during pause
+- GPS still tracks position (to detect resume)
+- On detecting movement > 1 km/h: auto-resume, banner disappears
+
+Manual pause:
+- Pause button stops the timer manually
+- During manual pause, show: "Paused - tap Resume to continue"
+- GPS continues tracking position
+- Resume button restarts the timer
+
+Pauses are counted in pauses_count for the final summary.
+
+## FEATURE 5: TURN-BY-TURN INSTRUCTIONS
+
+When OpenRouteService returns the route, it includes a "steps" array in extras with instructions like "Turn right onto Rue de Rivoli" and the distance to that turn.
+
+In voiceService.js:
+
+1. Parse the ORS steps array on route load
+2. As user walks, track position vs the next step's coordinates
+3. When user is 100m from a turn: trigger pre-announcement
+4. When user is at the turn (within 20m): trigger turn announcement
+
+For each instruction trigger:
+- VOICE (always except iOS without prior activation):
+  speechSynthesis.speak with text in user's language (FR/EN)
+  Example FR: "Dans 100 mètres, tournez à droite rue de Rivoli"
+  Example FR: "Tournez à droite maintenant"
+- VIBRATION (Android only):
+  navigator.vibrate([200, 100, 200]) for turn announcement
+  navigator.vibrate(500) for arrival
+- VISUAL:
+  Animate the instruction card on top of map (pulse green)
+  Update icon (arrow pointing in turn direction)
+
+iOS Safari workaround for voice:
+- speechSynthesis on iOS requires a user gesture to initialize
+- On "Start Walking" button, immediately call speechSynthesis.speak with a silent test
+- This unlocks voice for the rest of the session
+- If user skipped "Activate voice guidance", fallback to visual + vibration only
+
+## FEATURE 6: OFF-ROUTE DETECTION
+
+In trackingService.js, every new GPS point:
+
+1. Calculate distance from user position to nearest point on planned route
+2. If distance > 50m for more than 10 consecutive seconds:
+   - Show modal popup: "You've gone off-route"
+   - Options: "Continue anyway" | "Recalculate from here"
+   - Play warning sound: short beep via Audio API (use a small mp3 from public folder)
+   - Vibration: navigator.vibrate([300, 100, 300, 100, 300]) on Android
+   - Voice announcement: "You're off route. Continue or recalculate?"
+
+3. If user picks "Recalculate from here":
+   - Call OpenRouteService with current GPS position as new start, original destination as end
+   - Replace the displayed planned route on the map
+   - Resume normal navigation
+   - Increment recalculations_count for the summary
+
+4. If user picks "Continue anyway":
+   - Disable off-route alerts for this walk
+   - User still gets tracked, but no more popup
+
+## FEATURE 7: WAKE LOCK INTELLIGENT
+
+Detect platform:
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isAndroid = /Android/.test(navigator.userAgent);
+
+On Start Walking:
+- If iOS: automatically request Wake Lock (no toggle, mandatory):
+  const wakeLock = await navigator.wakeLock.request("screen");
+  Show banner at top: "Screen will stay on for tracking"
+  
+- If Android: show a toggle on confirmation screen: "Keep screen on?" (default OFF)
+  If user enables: request Wake Lock
+  If user disables: tracking runs in background (works on Android Chrome)
+
+On walk end or app pause:
+  wakeLock.release()
+
+Handle Wake Lock release on visibility change:
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && shouldKeepAwake) {
+      reacquireWakeLock()
+    }
+  })
+
+## FEATURE 8: STOP + RECAP SCREEN
+
+When user clicks "Stop":
+
+1. Show confirmation dialog:
+   "End walk? Your progress will be saved."
+   Options: "Cancel" | "End walk"
+
+2. On confirm:
+   - Stop GPS watchPosition
+   - Release Wake Lock
+   - Compute final stats
+   - Save everything to walking_routes table (UPDATE existing route or INSERT new)
+   - Transition to RouteSummary screen
+
+3. RouteSummary screen shows:
+
+### Top: Congratulatory header
+- Big checkmark icon
+- "Walk completed!"
+- Date + time
+
+### Big stats section (centered, large numbers):
+- Distance: 3.42 km
+- Duration: 38:12
+- Calories: 198 kcal
+- Average pace: 11:11 /km
+
+### Comparison vs planned (small cards):
+- Planned: 3.5 km / 42 min / 200 kcal
+- Actual: 3.42 km / 38 min / 198 kcal
+- Difference indicator (green if better, red if worse)
+
+### Speed chart (Chart.js):
+- Line chart of current_speed over time
+- X-axis: time elapsed (minutes)
+- Y-axis: speed (km/h)
+- Smooth curve, FitConnect color (green)
+- Show average speed as horizontal dashed line
+
+### Map preview:
+- Mini Leaflet map showing actual walked path (blue)
+- Overlay with planned route (green) for comparison
+- Markers at start and end
+
+### Bottom actions:
+- "Save and Continue" button (large, primary green)
+   This auto-saves to Daily Log and triggers Coach IA notification
+- "Discard" button (small, gray text)
+   Asks confirmation, then deletes the walk record
+
+4. Auto-save logic on "Save and Continue":
+   - Insert into daily_logs the walk as a workout entry:
+     {
+       name: "Walk (FitConnect)",
+       type: "walking",
+       duration_min: final_duration,
+       calories_burned: final_calories,
+       distance_km: final_distance
+     }
+   - Send a coach_message:
+     "Great walk Iyad! You walked 3.42 km in 38 minutes and burned 198 kcal. Keep it up!"
+   - Show success toast: "Walk saved to your daily log"
+   - Navigate back to Walk tab (or Home tab, your call)
+
+## TRANSLATIONS NEEDED (FR/EN)
+
+Add new strings:
+- "Ready to start your walk?"
+- "Activate voice guidance"
+- "Start Walking"
+- "Keep your screen on during the walk"
+- "Auto-paused - resume when you start walking"
+- "Paused - tap Resume to continue"
+- "You've gone off-route"
+- "Continue anyway"
+- "Recalculate from here"
+- "Screen will stay on for tracking"
+- "End walk? Your progress will be saved."
+- "Walk completed!"
+- "Planned"
+- "Actual"
+- "Save and Continue"
+- "Discard"
+- "Walk saved to your daily log"
+- "GPS signal weak"
+- Turn instructions: "In X meters, turn right/left", "Turn right/left now", "Continue straight", "Arrival"
+
+## TESTING REQUIREMENTS
+
+After implementation, manually verify with REAL outdoor walking:
+
+1. Generate a Loop route in your area
+2. Click "Start Navigation" - confirmation modal appears
+3. Click "Activate voice guidance" - hear a test phrase
+4. Click "Start Walking" - full screen tracking opens
+5. Walk physically for 5-10 minutes
+6. Verify:
+   - Blue dot follows your position
+   - Stats update in real-time
+   - Voice announces turns
+   - Vibration triggers on Android
+   - Visual instruction card updates
+7. Stop walking and stand still for 30 seconds - auto-pause should trigger
+8. Resume walking - auto-pause should clear
+9. Press manual Pause - timer freezes
+10. Press Resume - timer restarts
+11. Deliberately walk off-route - off-route alert appears
+12. Click "Recalculate" - new route from current position
+13. Click "Stop" - confirmation appears
+14. Confirm - summary screen with stats, chart, comparison map
+15. Click "Save and Continue":
+   - Walk appears in Daily Log under workouts
+   - Coach IA sends a congrats message
+   - Walk appears in Walk history with actual stats
+
+## DO NOT BREAK
+
+- All other Walk modes (Loop, A->B intelligent, Custom Route) continue to work as before
+- Weather card unchanged
+- Address autocomplete unchanged
+- Generate Route button still produces the planned route
+- Save to History still works
+- All other tabs (Home, Coach, Track) unchanged
+- FR/EN translations on existing features unchanged
+
+## EDGE CASES
+
+1. GPS permission denied:
+   - Show clear error: "GPS access required for tracking. Please enable location in your browser settings."
+   - Provide a "Try again" button
+
+2. GPS lost during walk (tunnel, indoor):
+   - Show "GPS signal lost" indicator
+   - Pause tracking automatically
+   - When GPS returns, resume
+
+3. User closes the tab/browser during walk:
+   - On next app open, detect unfinished walk
+   - Show modal: "Resume your walk from earlier?" with stats so far
+   - Options: "Resume" | "Discard"
+
+4. Wake Lock not supported (older browsers):
+   - Fall back gracefully (no error)
+   - Show small warning: "Keep your screen on manually for best results"
+
+5. Web Speech API not supported:
+   - Silently fall back to vibration + visual only
+   - No error to user
+
+6. Battery low warning:
+   - At < 15% battery, show small warning: "Low battery may affect GPS tracking"
+
+## LIBRARIES TO INSTALL (if not present)
+
+- @turf/turf (for line/point geo operations)
+- chart.js with react-chartjs-2 (already there?)
+
+Verify presence first before installing.

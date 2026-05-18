@@ -356,6 +356,12 @@ export const SaveWalkingRouteBody = zod.object({
   estimated_calories: zod.number(),
   completed: zod.boolean().optional(),
   actual_calories: zod.number().nullish(),
+  actual_distance_km: zod.number().nullish(),
+  actual_duration_sec: zod.number().nullish(),
+  gps_track: zod.object({}).passthrough().nullish(),
+  average_speed_kmh: zod.number().nullish(),
+  pauses_count: zod.number().nullish(),
+  completed_at: zod.string().nullish(),
 });
 
 /**
@@ -377,6 +383,12 @@ export const GetRouteHistoryResponseItem = zod.object({
   estimated_calories: zod.number(),
   completed: zod.boolean(),
   actual_calories: zod.number().nullish(),
+  actual_distance_km: zod.number().nullish(),
+  actual_duration_sec: zod.number().nullish(),
+  gps_track: zod.object({}).passthrough().nullish(),
+  average_speed_kmh: zod.number().nullish(),
+  pauses_count: zod.number().nullish(),
+  completed_at: zod.string().nullish(),
   created_at: zod.string(),
 });
 export const GetRouteHistoryResponse = zod.array(GetRouteHistoryResponseItem);

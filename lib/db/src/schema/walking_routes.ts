@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, numeric, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, numeric, boolean, jsonb, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -14,6 +14,12 @@ export const walkingRoutesTable = pgTable("walking_routes", {
   estimatedCalories: numeric("estimated_calories").notNull(),
   completed: boolean("completed").default(false),
   actualCalories: numeric("actual_calories"),
+  actualDistanceKm: numeric("actual_distance_km"),
+  actualDurationSec: integer("actual_duration_sec"),
+  gpsTrack: jsonb("gps_track"),
+  averageSpeedKmh: numeric("average_speed_kmh"),
+  pausesCount: integer("pauses_count"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

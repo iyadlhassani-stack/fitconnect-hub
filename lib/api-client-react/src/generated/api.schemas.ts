@@ -292,6 +292,8 @@ export type WalkingRouteInputStartLocation = {
 
 export type WalkingRouteInputGeneratedRoute = { [key: string]: unknown };
 
+export type WalkingRouteInputGpsTrack = { [key: string]: unknown } | null;
+
 export interface WalkingRouteInput {
   user_id: string;
   start_location: WalkingRouteInputStartLocation;
@@ -304,11 +306,24 @@ export interface WalkingRouteInput {
   completed?: boolean;
   /** @nullable */
   actual_calories?: number | null;
+  /** @nullable */
+  actual_distance_km?: number | null;
+  /** @nullable */
+  actual_duration_sec?: number | null;
+  gps_track?: WalkingRouteInputGpsTrack;
+  /** @nullable */
+  average_speed_kmh?: number | null;
+  /** @nullable */
+  pauses_count?: number | null;
+  /** @nullable */
+  completed_at?: string | null;
 }
 
 export type WalkingRouteStartLocation = { [key: string]: unknown };
 
 export type WalkingRouteGeneratedRoute = { [key: string]: unknown };
+
+export type WalkingRouteGpsTrack = { [key: string]: unknown } | null;
 
 export interface WalkingRoute {
   id: string;
@@ -323,6 +338,17 @@ export interface WalkingRoute {
   completed: boolean;
   /** @nullable */
   actual_calories?: number | null;
+  /** @nullable */
+  actual_distance_km?: number | null;
+  /** @nullable */
+  actual_duration_sec?: number | null;
+  gps_track?: WalkingRouteGpsTrack;
+  /** @nullable */
+  average_speed_kmh?: number | null;
+  /** @nullable */
+  pauses_count?: number | null;
+  /** @nullable */
+  completed_at?: string | null;
   created_at: string;
 }
 

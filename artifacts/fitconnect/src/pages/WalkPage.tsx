@@ -2,10 +2,14 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Polyline, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { useGenerateWalkingRoutes, useSaveWalkingRoute } from '@workspace/api-client-react';
+import { useGenerateWalkingRoutes, useSaveWalkingRoute, useUpsertDailyLog } from '@workspace/api-client-react';
 import type { RouteProposal } from '@workspace/api-client-react';
 import { useAppStore } from '../store/useAppStore';
 import { supabase } from '../lib/supabase';
+import type { TrackingState } from '../hooks/useTracking';
+import StartConfirmModal from '../components/walk/StartConfirmModal';
+import NavigationScreen from '../components/walk/NavigationScreen';
+import RouteSummary from '../components/walk/RouteSummary';
 
 // ─── Leaflet icon fix ──────────────────────────────────────────────────────────
 L.Icon.Default.mergeOptions({
@@ -277,74 +281,6 @@ function RouteResultMap({ result, mode, customStops }: { result: RouteProposal; 
   );
 }
 
-// ─── NavigationSheet ───────────────────────────────────────────────────────────
-function NavigationSheet({ isOpen, onClose, result, mode, customStops }: {
-  isOpen: boolean; onClose: () => void; result: RouteProposal; mode: WalkMode; customStops?: Coords[];
-}) {
-  const { t } = useTranslation();
-  if (!isOpen) return null;
-  const geojson = result.geojson as { coordinates?: number[][] };
-  const coords = geojson?.coordinates ?? [];
-  const sc = result.start_coords; const ec = result.end_coords;
-  const startLat = sc?.lat ?? 0; const startLng = sc?.lng ?? 0;
-  let destLat = ec?.lat ?? startLat; let destLng = ec?.lng ?? startLng;
-
-  if (mode === 'loop' && coords.length > 5) {
-    const [dLng, dLat] = coords[Math.floor(coords.length * 0.7)];
-    destLat = dLat as number; destLng = dLng as number;
-  }
-
-  let googleUrl: string;
-  if (mode === 'custom' && customStops && customStops.length > 0) {
-    const stops = customStops.slice(0, 8).map((s) => `${s.lat},${s.lng}`).join('|');
-    googleUrl = `https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLng}&destination=${destLat},${destLng}&travelmode=walking&waypoints=${stops}`;
-  } else if (mode === 'loop' && coords.length > 5) {
-    const n = coords.length;
-    const wps = [0.2, 0.4, 0.6].map((f) => { const [lng, lat] = coords[Math.floor(f * n)]; return `${lat as number},${lng as number}`; }).join('|');
-    googleUrl = `https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLng}&destination=${destLat},${destLng}&travelmode=walking&waypoints=${wps}`;
-  } else {
-    const n = coords.length;
-    const count = Math.min(6, Math.max(0, Math.floor(n / 10)));
-    const wps = count > 0 ? Array.from({ length: count }, (_, i) => { const [lng, lat] = coords[Math.floor((i + 1) * n / (count + 1))]; return `${lat as number},${lng as number}`; }).join('|') : '';
-    googleUrl = `https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLng}&destination=${destLat},${destLng}&travelmode=walking${wps ? `&waypoints=${wps}` : ''}`;
-  }
-
-  const appleUrl = `https://maps.apple.com/?saddr=${startLat},${startLng}&daddr=${destLat},${destLng}&dirflg=w`;
-  const wazeUrl = `https://waze.com/ul?ll=${destLat},${destLng}&navigate=yes`;
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const showWaze = mode === 'direct';
-  const hasMultiStop = mode !== 'direct';
-
-  const links = [
-    { label: t('walk.maps_google'), emoji: '🗺️', url: googleUrl, recommended: !isIOS, show: true, note: null },
-    { label: t('walk.maps_apple'), emoji: '🍎', url: appleUrl, recommended: isIOS, show: true, note: hasMultiStop ? t('walk.maps_apple_warning') : null },
-    { label: t('walk.maps_waze'), emoji: '🚗', url: wazeUrl, recommended: false, show: showWaze, note: null },
-  ].filter((l) => l.show).sort((a, b) => Number(b.recommended) - Number(a.recommended));
-
-  return (
-    <div className="fixed inset-0 z-[200] flex flex-col justify-end bg-black/50" onClick={onClose}>
-      <div className="bg-white rounded-t-2xl p-5 pb-10 safe-area-bottom" onClick={(e) => e.stopPropagation()}>
-        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
-        <h3 className="text-lg font-bold text-gray-800 mb-1">{t('walk.start_navigation')}</h3>
-        <p className="text-xs text-gray-400 mb-4">{t('walk.nav_note')}</p>
-        <div className="space-y-2">
-          {links.map((link) => (
-            <div key={link.label}>
-              <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 transition-colors">
-                <span className="text-2xl">{link.emoji}</span>
-                <span className="font-semibold text-gray-800">{link.label}</span>
-                {link.recommended && <span className="ml-auto text-xs bg-[#00C853]/10 text-[#00C853] font-semibold px-2.5 py-1 rounded-full">Recommended</span>}
-                <svg className="w-4 h-4 text-gray-400 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              </a>
-              {link.note && <p className="mt-1 text-xs text-amber-600 px-1">{link.note}</p>}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── WalkPage ──────────────────────────────────────────────────────────────────
 export default function WalkPage() {
   const { t, i18n } = useTranslation();
@@ -364,7 +300,13 @@ export default function WalkPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [wasSaved, setWasSaved] = useState(false);
-  const [showNavSheet, setShowNavSheet] = useState(false);
+  const [showStartConfirm, setShowStartConfirm] = useState(false);
+  const [showNavigation, setShowNavigation] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+  const [navVoiceEnabled, setNavVoiceEnabled] = useState(false);
+  const [navKeepScreenOn, setNavKeepScreenOn] = useState(false);
+  const [finalTracking, setFinalTracking] = useState<TrackingState | null>(null);
+  const [isSavingWalk, setIsSavingWalk] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [mapPickerField, setMapPickerField] = useState<string | null>(null);
@@ -376,6 +318,7 @@ export default function WalkPage() {
   const targetInputRef = useRef<HTMLInputElement>(null);
   const generateMutation = useGenerateWalkingRoutes();
   const saveMutation = useSaveWalkingRoute();
+  const logMutation = useUpsertDailyLog();
 
   // ── Weather fetch ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -489,6 +432,90 @@ export default function WalkPage() {
   const handleAdjustGoal = useCallback(() => {
     targetInputRef.current?.focus();
     targetInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
+  // ── Navigation handlers ────────────────────────────────────────────────────
+  const handleStartNavigation = useCallback((voice: boolean, screenOn: boolean) => {
+    setNavVoiceEnabled(voice);
+    setNavKeepScreenOn(screenOn);
+    setShowStartConfirm(false);
+    setShowNavigation(true);
+  }, []);
+
+  const handleWalkStop = useCallback((finalState: TrackingState) => {
+    setFinalTracking(finalState);
+    setShowNavigation(false);
+    setShowSummary(true);
+  }, []);
+
+  const handleSaveWalk = useCallback(async () => {
+    if (!finalTracking || !user || !result) return;
+    setIsSavingWalk(true);
+    try {
+      const distKm = parseFloat(finalTracking.distanceKm.toFixed(3));
+      const durationMin = Math.round(finalTracking.elapsedSec / 60);
+      const today = new Date().toISOString().split('T')[0];
+
+      await Promise.all([
+        saveMutation.mutateAsync({
+          data: {
+            user_id: user.id,
+            start_location: { lat: startCoords?.lat, lng: startCoords?.lng, address: startAddress || null },
+            target_type: targetType,
+            target_value: parseFloat(targetValue) || 0,
+            generated_route: result.geojson as Record<string, unknown>,
+            distance_km: result.distance_km,
+            duration_min: result.duration_min,
+            estimated_calories: result.estimated_calories,
+            completed: true,
+            actual_calories: finalTracking.calories,
+            actual_distance_km: distKm,
+            actual_duration_sec: finalTracking.elapsedSec,
+            average_speed_kmh: finalTracking.avgSpeedKmh,
+            pauses_count: finalTracking.pausesCount,
+            completed_at: new Date().toISOString(),
+          },
+        }),
+        logMutation.mutateAsync({
+          data: {
+            user_id: user.id,
+            date: today,
+            workouts: [{
+              name: 'Walk (FitConnect)',
+              type: 'walking',
+              duration_min: durationMin,
+              calories_burned: finalTracking.calories,
+            }],
+          },
+        }),
+      ]);
+
+      if (user.id) {
+        const name = profile?.full_name?.split(' ')[0] ?? t('home.good_morning');
+        await supabase.from('coach_messages').insert({
+          user_id: user.id,
+          role: 'assistant',
+          content: `Great walk ${name}! You walked ${distKm} km in ${durationMin} minutes and burned ${finalTracking.calories} kcal. Keep it up! 🎉`,
+          type: 'proactive_suggestion',
+          read: false,
+        });
+      }
+
+      showToast(t('walk.summary_saved_toast'));
+      setShowSummary(false);
+      setFinalTracking(null);
+      setResult(null);
+      setShowResult(false);
+    } catch {
+      showToast('Could not save walk.');
+    } finally {
+      setIsSavingWalk(false);
+    }
+  }, [finalTracking, user, result, startCoords, startAddress, targetType, targetValue, saveMutation, logMutation, profile, t, showToast]);
+
+  const handleDiscardWalk = useCallback(() => {
+    setShowSummary(false);
+    setFinalTracking(null);
   }, []);
 
   // ── Save ───────────────────────────────────────────────────────────────────
@@ -744,7 +771,7 @@ export default function WalkPage() {
               </div>
               {/* Actions */}
               <div className="flex gap-2">
-                <button onClick={() => setShowNavSheet(true)}
+                <button onClick={() => setShowStartConfirm(true)}
                   className="flex-1 py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-1.5"
                   style={{ background: 'linear-gradient(135deg, #00C853, #00B8D4)' }}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
@@ -777,7 +804,41 @@ export default function WalkPage() {
         onClose={() => { setMapPickerField(null); setMapTempCoords(null); }} />
 
       {result && !isImpossible && (
-        <NavigationSheet isOpen={showNavSheet} onClose={() => setShowNavSheet(false)} result={result} mode={mode} customStops={mode === 'custom' ? customStops : undefined} />
+        <StartConfirmModal
+          isOpen={showStartConfirm}
+          routeName={result.note ?? `${result.distance_km} km ${t('walk.mode_' + mode)}`}
+          distanceKm={result.distance_km}
+          durationMin={result.duration_min}
+          estimatedCalories={result.estimated_calories}
+          onStart={handleStartNavigation}
+          onClose={() => setShowStartConfirm(false)}
+        />
+      )}
+
+      {showNavigation && result && (
+        <NavigationScreen
+          geojsonCoords={(result.geojson as { coordinates?: [number, number][] })?.coordinates ?? []}
+          orsSteps={[]}
+          weightKg={profile?.weight_kg ?? 70}
+          totalDistanceKm={result.distance_km}
+          voiceEnabled={navVoiceEnabled}
+          keepScreenOn={navKeepScreenOn}
+          lang={i18n.language}
+          onStop={handleWalkStop}
+        />
+      )}
+
+      {showSummary && finalTracking && result && (
+        <RouteSummary
+          tracking={finalTracking}
+          plannedDistanceKm={result.distance_km}
+          plannedDurationMin={result.duration_min}
+          plannedCalories={result.estimated_calories}
+          plannedRouteCoords={(result.geojson as { coordinates?: [number, number][] })?.coordinates ?? []}
+          onSave={handleSaveWalk}
+          onDiscard={handleDiscardWalk}
+          saving={isSavingWalk}
+        />
       )}
     </div>
   );

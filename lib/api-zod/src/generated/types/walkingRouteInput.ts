@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { WalkingRouteInputGeneratedRoute } from "./walkingRouteInputGeneratedRoute";
+import type { WalkingRouteInputGpsTrack } from "./walkingRouteInputGpsTrack";
 import type { WalkingRouteInputStartLocation } from "./walkingRouteInputStartLocation";
 
 export interface WalkingRouteInput {
@@ -20,4 +21,15 @@ export interface WalkingRouteInput {
   completed?: boolean;
   /** @nullable */
   actual_calories?: number | null;
+  /** @nullable */
+  actual_distance_km?: number | null;
+  /** @nullable */
+  actual_duration_sec?: number | null;
+  gps_track?: WalkingRouteInputGpsTrack;
+  /** @nullable */
+  average_speed_kmh?: number | null;
+  /** @nullable */
+  pauses_count?: number | null;
+  /** @nullable */
+  completed_at?: string | null;
 }

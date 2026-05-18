@@ -347,6 +347,12 @@ router.post("/routes", async (req, res): Promise<void> => {
       estimatedCalories: String(data.estimated_calories),
       completed: data.completed ?? false,
       actualCalories: data.actual_calories != null ? String(data.actual_calories) : null,
+      actualDistanceKm: data.actual_distance_km != null ? String(data.actual_distance_km) : null,
+      actualDurationSec: data.actual_duration_sec ?? null,
+      gpsTrack: data.gps_track as unknown as Record<string, unknown> ?? null,
+      averageSpeedKmh: data.average_speed_kmh != null ? String(data.average_speed_kmh) : null,
+      pausesCount: data.pauses_count ?? null,
+      completedAt: data.completed_at ? new Date(data.completed_at) : null,
     }).returning();
     res.status(201).json({
       id: route.id, user_id: route.userId, start_location: route.startLocation,
@@ -354,6 +360,12 @@ router.post("/routes", async (req, res): Promise<void> => {
       generated_route: route.generatedRoute, distance_km: parseFloat(route.distanceKm),
       duration_min: parseFloat(route.durationMin), estimated_calories: parseFloat(route.estimatedCalories),
       completed: route.completed, actual_calories: route.actualCalories ? parseFloat(route.actualCalories) : null,
+      actual_distance_km: route.actualDistanceKm ? parseFloat(route.actualDistanceKm) : null,
+      actual_duration_sec: route.actualDurationSec ?? null,
+      gps_track: route.gpsTrack ?? null,
+      average_speed_kmh: route.averageSpeedKmh ? parseFloat(route.averageSpeedKmh) : null,
+      pauses_count: route.pausesCount ?? null,
+      completed_at: route.completedAt?.toISOString() ?? null,
       created_at: route.createdAt.toISOString(),
     });
   } catch (err) {
