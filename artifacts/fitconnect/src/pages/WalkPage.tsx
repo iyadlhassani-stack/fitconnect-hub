@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Polyline, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useGenerateWalkingRoutes, useSaveWalkingRoute } from '@workspace/api-client-react';
-import type { RouteProposal, RoutePOI } from '@workspace/api-client-react';
+import type { RouteProposal } from '@workspace/api-client-react';
 import { useAppStore } from '../store/useAppStore';
 import { supabase } from '../lib/supabase';
 
@@ -185,133 +185,6 @@ function WeatherCard({ weather, loading, t }: { weather: WeatherData | null; loa
         {weather.forecast3h && weather.forecast3h.pop > 0.1 && (
           <span className="ml-auto">{t('walk.weather_next_3h')} <strong className="text-gray-700">{weather.forecast3h.temp}°</strong> · {Math.round(weather.forecast3h.pop * 100)}% 🌧</span>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ─── POI config & components ───────────────────────────────────────────────────
-
-const POI_CATEGORIES = [
-  { key: 'park', labelKey: 'walk.poi_category_parks', emoji: '🌳' },
-  { key: 'monument', labelKey: 'walk.poi_category_monuments', emoji: '🏛️' },
-  { key: 'square', labelKey: 'walk.poi_category_squares', emoji: '🏙️' },
-  { key: 'viewpoint', labelKey: 'walk.poi_category_viewpoints', emoji: '⛰️' },
-  { key: 'fountain', labelKey: 'walk.poi_category_fountains', emoji: '⛲' },
-] as const;
-
-const POI_TYPE_INFO: Record<string, { emoji: string; labelKey: string }> = {
-  park: { emoji: '🌳', labelKey: 'walk.poi_type_park' },
-  monument: { emoji: '🏛️', labelKey: 'walk.poi_type_monument' },
-  square: { emoji: '🏙️', labelKey: 'walk.poi_type_square' },
-  viewpoint: { emoji: '⛰️', labelKey: 'walk.poi_type_viewpoint' },
-  fountain: { emoji: '⛲', labelKey: 'walk.poi_type_fountain' },
-};
-
-function POICard({ poi, onSelect }: { poi: RoutePOI; onSelect: (p: RoutePOI) => void }) {
-  const { t } = useTranslation();
-  const typeInfo = POI_TYPE_INFO[poi.type] ?? { emoji: '📍', labelKey: 'walk.poi_type_park' };
-  const description = poi.description ?? t('walk.poi_description_fallback');
-  const distLabel = poi.on_route
-    ? t('walk.poi_on_way')
-    : poi.distance_from_route != null
-    ? t('walk.poi_detour', { dist: poi.distance_from_route })
-    : t('walk.poi_on_way');
-
-  return (
-    <button
-      onClick={() => onSelect(poi)}
-      className="flex-shrink-0 rounded-2xl overflow-hidden bg-[#FAFAF7] border border-gray-100 hover:shadow-md active:scale-95 transition-all text-left"
-      style={{ width: 200 }}
-    >
-      {poi.photo_url ? (
-        <img src={poi.photo_url} alt={poi.name} className="w-full h-28 object-cover" loading="lazy" />
-      ) : (
-        <div className="w-full h-28 bg-gradient-to-br from-[#00C853]/10 to-[#00B8D4]/10 flex items-center justify-center text-4xl">
-          {typeInfo.emoji}
-        </div>
-      )}
-      <div className="p-3">
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-xs">{typeInfo.emoji}</span>
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{t(typeInfo.labelKey)}</span>
-        </div>
-        <p className="text-sm font-bold text-gray-800 mb-1 leading-tight" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-          {poi.name}
-        </p>
-        <p className="text-xs text-gray-500 mb-2.5" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-          {description}
-        </p>
-        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
-          poi.on_route ? 'bg-[#00C853]/10 text-[#00C853]' : 'bg-gray-100 text-gray-500'
-        }`}>
-          {poi.on_route ? '✓' : '~'} {distLabel}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function POIModal({ poi, onClose }: { poi: RoutePOI; onClose: () => void }) {
-  const { t } = useTranslation();
-  const typeInfo = POI_TYPE_INFO[poi.type] ?? { emoji: '📍', labelKey: 'walk.poi_type_park' };
-  const description = poi.description ?? t('walk.poi_description_fallback');
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lng}`;
-
-  return (
-    <div className="fixed inset-0 z-[300] flex flex-col justify-end bg-black/60" onClick={onClose}>
-      <div
-        className="bg-white rounded-t-3xl overflow-hidden"
-        style={{ maxHeight: '85vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {poi.photo_url ? (
-          <img src={poi.photo_url} alt={poi.name} className="w-full object-cover flex-shrink-0" style={{ height: 220 }} />
-        ) : (
-          <div
-            className="w-full bg-gradient-to-br from-[#00C853]/10 to-[#00B8D4]/10 flex items-center justify-center text-7xl flex-shrink-0"
-            style={{ height: 160 }}
-          >
-            {typeInfo.emoji}
-          </div>
-        )}
-        <div className="p-5 overflow-y-auto" style={{ maxHeight: '50vh' }}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1 min-w-0 pr-4">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className="text-sm">{typeInfo.emoji}</span>
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{t(typeInfo.labelKey)}</span>
-                {poi.on_route && (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#00C853]/10 text-[#00C853]">
-                    {t('walk.poi_on_way')}
-                  </span>
-                )}
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 leading-tight">{poi.name}</h2>
-            </div>
-            <button
-              onClick={onClose}
-              className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <p className="text-sm text-gray-600 leading-relaxed mb-5">{description}</p>
-          <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-[#00C853] text-white font-bold text-sm hover:bg-[#00B048] transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            {t('walk.poi_view_map')}
-          </a>
-        </div>
       </div>
     </div>
   );
@@ -623,11 +496,6 @@ export default function WalkPage() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
 
-  // Scenic POI options
-  const [enablePOI, setEnablePOI] = useState(true);
-  const [poiCategories, setPoiCategories] = useState<string[]>(['park', 'monument', 'square', 'viewpoint', 'fountain']);
-  const [selectedPOI, setSelectedPOI] = useState<RoutePOI | null>(null);
-
   const generateMutation = useGenerateWalkingRoutes();
   const saveMutation = useSaveWalkingRoute();
 
@@ -651,12 +519,6 @@ export default function WalkPage() {
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
-  }, []);
-
-  const togglePoiCategory = useCallback((key: string) => {
-    setPoiCategories((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
   }, []);
 
   const addCustomWaypoint = useCallback(() => {
@@ -733,9 +595,6 @@ export default function WalkPage() {
             pace,
             weightKg,
             seed: usedSeed,
-            enablePOI: enablePOI && poiCategories.length > 0,
-            poiCategories: (poiCategories.length > 0 ? poiCategories : null) as ('park' | 'monument' | 'square' | 'viewpoint' | 'fountain')[] | null,
-            language: i18n.language,
           },
         });
       }
@@ -759,7 +618,7 @@ export default function WalkPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [isFormValid, profile, mode, startCoords, startAddress, endCoords, endAddress, customWaypoints, targetType, targetValue, pace, generateMutation, weather, user, t, enablePOI, poiCategories, i18n.language]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isFormValid, profile, mode, startCoords, startAddress, endCoords, endAddress, customWaypoints, targetType, targetValue, pace, generateMutation, weather, user, t]);
 
   const handleRegenerate = useCallback(() => handleGenerate(Math.floor(Math.random() * 1000)), [handleGenerate]);
 
@@ -778,7 +637,6 @@ export default function WalkPage() {
           duration_min: result.duration_min,
           estimated_calories: result.estimated_calories,
           completed: false,
-          pois_included: result.pois ?? null,
         },
       });
       setWasSaved(true);
@@ -899,46 +757,6 @@ export default function WalkPage() {
             <p className="mt-2 text-xs text-[#00B8D4] text-center">{t('walk.custom_subtitle')}</p>
           )}
         </div>
-
-        {/* ── Scenic Route Options ──────────────────────────────────── */}
-        {mode !== 'custom' && (
-          <div className="bg-white rounded-2xl p-4 shadow-sm">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t('walk.poi_scenic_options')}</p>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-800 pr-4 leading-snug">{t('walk.poi_toggle')}</p>
-              <button
-                onClick={() => setEnablePOI((p) => !p)}
-                className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors ${enablePOI ? 'bg-[#00C853]' : 'bg-gray-200'}`}
-              >
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${enablePOI ? 'translate-x-7' : 'translate-x-1'}`} />
-              </button>
-            </div>
-            {enablePOI && (
-              <div className="mt-3">
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {POI_CATEGORIES.map((cat) => {
-                    const isOn = poiCategories.includes(cat.key);
-                    return (
-                      <button
-                        key={cat.key}
-                        onClick={() => togglePoiCategory(cat.key)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                          isOn
-                            ? 'bg-[#00C853]/10 text-[#00C853] border-[#00C853]/30'
-                            : 'bg-gray-50 text-gray-400 border-gray-100'
-                        }`}
-                      >
-                        <span>{cat.emoji}</span>
-                        {t(cat.labelKey)}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-gray-400">{t('walk.poi_constraint')}</p>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ── Location inputs ───────────────────────────────────────── */}
         {mode !== 'custom' ? (
@@ -1145,26 +963,6 @@ export default function WalkPage() {
             {/* Map */}
             <RouteResultMap result={result} mode={mode} customStops={mode === 'custom' ? customStops : undefined} />
 
-            {/* POI Carousel */}
-            {result.pois && result.pois.length > 0 && (
-              <div className="border-t border-gray-50 pt-4 pb-1">
-                <h3 className="px-4 text-sm font-bold text-gray-800 mb-3">{t('walk.poi_spots_header')}</h3>
-                <div
-                  className="flex gap-3 overflow-x-auto pb-3"
-                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', paddingLeft: 16, paddingRight: 16 }}
-                >
-                  {result.pois.map((poi) => (
-                    <POICard key={poi.id} poi={poi as RoutePOI} onSelect={setSelectedPOI} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {result.pois !== null && result.pois !== undefined && result.pois.length === 0 && mode !== 'custom' && enablePOI && poiCategories.length > 0 && (
-              <div className="border-t border-gray-50 px-4 py-4">
-                <p className="text-xs text-gray-400 text-center italic">{t('walk.poi_none')}</p>
-              </div>
-            )}
-
             {/* Stats */}
             <div className="p-4 space-y-3">
               {result.note && (
@@ -1247,11 +1045,6 @@ export default function WalkPage() {
           mode={mode}
           customStops={mode === 'custom' ? customStops : undefined}
         />
-      )}
-
-      {/* POI detail modal */}
-      {selectedPOI && (
-        <POIModal poi={selectedPOI} onClose={() => setSelectedPOI(null)} />
       )}
     </div>
   );

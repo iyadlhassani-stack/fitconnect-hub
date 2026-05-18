@@ -516,32 +516,6 @@ components:
               weight_kg:
                 type: number
 
-    RoutePOI:
-      type: object
-      required: [id, name, type, lat, lng]
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        type:
-          type: string
-          enum: [park, monument, square, viewpoint, fountain]
-        lat:
-          type: number
-        lng:
-          type: number
-        photo_url:
-          type: ["string", "null"]
-        description:
-          type: ["string", "null"]
-        distance_from_route:
-          type: ["number", "null"]
-          description: Distance from the route line in meters
-        on_route:
-          type: boolean
-          description: True when this POI is incorporated as a waypoint in the route
-
     RouteGenerateInput:
       type: object
       required: [lat, lng, targetType, targetValue, pace, weightKg]
@@ -586,20 +560,6 @@ components:
                 type: number
               lng:
                 type: number
-        enablePOI:
-          type: boolean
-          nullable: true
-          description: Enable scenic POI discovery along the route (default true)
-        poiCategories:
-          type: array
-          nullable: true
-          description: POI categories to search for
-          items:
-            type: string
-            enum: [park, monument, square, viewpoint, fountain]
-        language:
-          type: ["string", "null"]
-          description: User language for Wikipedia enrichment (en or fr)
 
     RouteProposal:
       type: object
@@ -628,12 +588,6 @@ components:
           properties:
             lat: { type: number }
             lng: { type: number }
-        pois:
-          type: array
-          nullable: true
-          description: Scenic POIs found along or near the route
-          items:
-            $ref: "#/components/schemas/RoutePOI"
 
     WalkingRouteInput:
       type: object
@@ -666,11 +620,6 @@ components:
           type: boolean
         actual_calories:
           type: ["number", "null"]
-        pois_included:
-          type: array
-          nullable: true
-          items:
-            $ref: "#/components/schemas/RoutePOI"
 
     WalkingRoute:
       type: object
@@ -698,11 +647,6 @@ components:
           type: boolean
         actual_calories:
           type: ["number", "null"]
-        pois_included:
-          type: array
-          nullable: true
-          items:
-            $ref: "#/components/schemas/RoutePOI"
         created_at:
           type: string
 

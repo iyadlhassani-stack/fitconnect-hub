@@ -6,7 +6,6 @@ import {
   SaveWalkingRouteBody,
   GetRouteHistoryQueryParams,
 } from "@workspace/api-zod";
-import { findPOIsForRoute } from "../services/poiService";
 
 const router = Router();
 
@@ -97,12 +96,7 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
     return;
   }
 
-  const {
-    mode = "loop",
-    lat, lng, endLat, endLng,
-    targetType, targetValue, pace, weightKg, seed,
-    enablePOI, poiCategories, language,
-  } = parsed.data;
+  const { mode = "loop", lat, lng, endLat, endLng, targetType, targetValue, pace, weightKg, seed } = parsed.data;
 
   const speedKmh = SPEED[pace] ?? 5;
   const met = MET[pace] ?? 3.5;
@@ -118,11 +112,6 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
   }
 
   const orsKey = process.env.VITE_OPENROUTESERVICE_API_KEY;
-  const categories = Array.isArray(poiCategories) ? poiCategories as string[] : [];
-  const shouldFindPOIs =
-    mode !== 'custom' &&
-    (enablePOI ?? true) !== false &&
-    categories.length > 0;
 
   const buildResult = (
     distanceM: number,
@@ -146,46 +135,6 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
     };
   };
 
-  // ── POI discovery pipeline (runs after any non-custom route) ─────────────
-  const withPOIs = async (
-    base: ReturnType<typeof buildResult>,
-    baseCoords: number[][]
-  ): Promise<object> => {
-    if (!shouldFindPOIs || baseCoords.length < 2) {
-      return { ...base, pois: null };
-    }
-    try {
-      const poiResult = await Promise.race([
-        findPOIsForRoute({
-          baseCoordinates: baseCoords,
-          mode,
-          startLng: lng,
-          startLat: lat,
-          endLng: endLng ?? lng,
-          endLat: endLat ?? lat,
-          goalKm: targetKm,
-          categories,
-          language: (language as string) ?? 'en',
-          orsKey,
-        }),
-        new Promise<{ pois: never[]; enhancedRoute: null }>((resolve) =>
-          setTimeout(() => resolve({ pois: [], enhancedRoute: null }), 7000)
-        ),
-      ]);
-
-      if (poiResult.enhancedRoute) {
-        const er = poiResult.enhancedRoute;
-        return {
-          ...buildResult(er.distance, er.duration, er.coordinates),
-          pois: poiResult.pois,
-        };
-      }
-      return { ...base, pois: poiResult.pois };
-    } catch {
-      return { ...base, pois: [] };
-    }
-  };
-
   const mockLoop = () => {
     const mockCoords = [
       [lng, lat],
@@ -202,8 +151,7 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
       const usedSeed = seed ?? Math.floor(Math.random() * 1000);
 
       if (!orsKey) {
-        const base = mockLoop();
-        res.json({ ...base, pois: null });
+        res.json(mockLoop());
         return;
       }
 
@@ -215,13 +163,11 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
 
       if (!result) {
         req.log.warn("ORS loop failed, using mock");
-        const base = mockLoop();
-        res.json({ ...base, pois: null });
+        res.json(mockLoop());
         return;
       }
 
-      const base = buildResult(result.distance, result.duration, result.coordinates);
-      res.json(await withPOIs(base, result.coordinates));
+      res.json(buildResult(result.distance, result.duration, result.coordinates));
       return;
     }
 
@@ -233,8 +179,7 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
 
       if (!orsKey) {
         const d = haversineKm(lat, lng, endLat, endLng);
-        const base = buildResult(d * 1000, (d / speedKmh) * 3600, [[lng, lat], [endLng, endLat]], "Direct route shown.");
-        res.json({ ...base, pois: null });
+        res.json(buildResult(d * 1000, (d / speedKmh) * 3600, [[lng, lat], [endLng, endLat]], "Direct route shown."));
         return;
       }
 
@@ -243,13 +188,11 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
       if (!result) {
         req.log.warn("ORS direct failed");
         const d = haversineKm(lat, lng, endLat, endLng);
-        const base = buildResult(d * 1000, (d / speedKmh) * 3600, [[lng, lat], [endLng, endLat]], "This is the direct route between your points.");
-        res.json({ ...base, pois: null });
+        res.json(buildResult(d * 1000, (d / speedKmh) * 3600, [[lng, lat], [endLng, endLat]], "This is the direct route between your points."));
         return;
       }
 
-      const base = buildResult(result.distance, result.duration, result.coordinates, "This is the direct route between your points.");
-      res.json(await withPOIs(base, result.coordinates));
+      res.json(buildResult(result.distance, result.duration, result.coordinates, "This is the direct route between your points."));
       return;
     }
 
@@ -266,8 +209,7 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
           [(lng + endLng) / 2, (lat + endLat) / 2],
           [endLng, endLat],
         ];
-        const base = buildResult(targetKm * 1000, (targetKm / speedKmh) * 3600, mockCoords);
-        res.json({ ...base, pois: null });
+        res.json(buildResult(targetKm * 1000, (targetKm / speedKmh) * 3600, mockCoords));
         return;
       }
 
@@ -280,8 +222,9 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
         const coords = directResult?.coordinates ?? [[lng, lat], [endLng, endLat]];
         const dur = directResult?.duration ?? (directKm / speedKmh) * 3600;
         const dist = directResult?.distance ?? directKm * 1000;
-        const base = buildResult(dist, dur, coords, `Direct route already covers ${directKm.toFixed(1)} km (target: ${targetKm.toFixed(1)} km).`);
-        res.json(await withPOIs(base, coords));
+        res.json(
+          buildResult(dist, dur, coords, `Direct route already covers ${directKm.toFixed(1)} km (target: ${targetKm.toFixed(1)} km).`)
+        );
         return;
       }
 
@@ -299,8 +242,7 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
           const errorPct = Math.abs(actualKm - targetKm) / targetKm;
 
           if (errorPct <= 0.18) {
-            const base = buildResult(result.distance, result.duration, result.coordinates);
-            res.json(await withPOIs(base, result.coordinates));
+            res.json(buildResult(result.distance, result.duration, result.coordinates));
             return;
           }
 
@@ -312,13 +254,11 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
       }
 
       if (bestResult) {
-        const base = buildResult(bestResult.distance, bestResult.duration, bestResult.coordinates, bestNote ?? undefined);
-        res.json(await withPOIs(base, bestResult.coordinates));
+        res.json(buildResult(bestResult.distance, bestResult.duration, bestResult.coordinates, bestNote ?? undefined));
       } else {
         const coords = directResult?.coordinates ?? [[lng, lat], [endLng, endLat]];
         const dur = directResult?.duration ?? (directKm / speedKmh) * 3600;
-        const base = buildResult(directResult?.distance ?? directKm * 1000, dur, coords, "Could not find a detour — showing direct route.");
-        res.json(await withPOIs(base, coords));
+        res.json(buildResult(directResult?.distance ?? directKm * 1000, dur, coords, "Could not find a detour — showing direct route."));
       }
       return;
     }
@@ -342,7 +282,6 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
         res.json({
           ...buildResult(totalKm * 1000, durationS, orsCoords, 'Custom route through your chosen stops.'),
           end_coords: { lat: lastW.lat, lng: lastW.lng },
-          pois: null,
         });
         return;
       }
@@ -357,7 +296,6 @@ router.post("/routes/generate", async (req, res): Promise<void> => {
       res.json({
         ...buildResult(result.distance, result.duration, result.coordinates, 'Custom route through your chosen stops.'),
         end_coords: { lat: lastW.lat, lng: lastW.lng },
-        pois: null,
       });
       return;
     }
@@ -392,7 +330,6 @@ router.post("/routes", async (req, res): Promise<void> => {
         estimatedCalories: String(data.estimated_calories),
         completed: data.completed ?? false,
         actualCalories: data.actual_calories != null ? String(data.actual_calories) : null,
-        poisIncluded: (data.pois_included as unknown as Record<string, unknown>[]) ?? null,
       })
       .returning();
 
@@ -408,7 +345,6 @@ router.post("/routes", async (req, res): Promise<void> => {
       estimated_calories: parseFloat(route.estimatedCalories),
       completed: route.completed,
       actual_calories: route.actualCalories ? parseFloat(route.actualCalories) : null,
-      pois_included: route.poisIncluded ?? null,
       created_at: route.createdAt.toISOString(),
     });
   } catch (err) {
@@ -447,7 +383,6 @@ router.get("/routes/history", async (req, res): Promise<void> => {
         estimated_calories: parseFloat(r.estimatedCalories),
         completed: r.completed,
         actual_calories: r.actualCalories ? parseFloat(r.actualCalories) : null,
-        pois_included: r.poisIncluded ?? null,
         created_at: r.createdAt.toISOString(),
       }))
     );

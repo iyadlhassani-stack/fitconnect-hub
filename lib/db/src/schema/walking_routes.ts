@@ -14,7 +14,6 @@ export const walkingRoutesTable = pgTable("walking_routes", {
   estimatedCalories: numeric("estimated_calories").notNull(),
   completed: boolean("completed").default(false),
   actualCalories: numeric("actual_calories"),
-  poisIncluded: jsonb("pois_included"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
